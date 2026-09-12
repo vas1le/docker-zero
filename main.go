@@ -238,7 +238,7 @@ func printStartupSummary(stdout io.Writer, opts options, overrides map[string]in
 }
 
 func printCheckSummary(stdout io.Writer, opts options, cookbooks map[string]*Cookbook, overrides map[string]int, endpointMode string, mode os.FileMode, warnings []string) {
-	_ = cookbooks // Validation loads cookbooks; runtime topology is Docker/Compose-driven.
+	_ = cookbooks
 	fmt.Fprintf(stdout, "docker-zero %s CHECK OK\n", version)
 	fmt.Fprintf(stdout, "  Cookbooks         : nginx, redis\n")
 	fmt.Fprintf(stdout, "  Seeds             : 0, 1, 2\n")
@@ -269,11 +269,7 @@ func checkConfiguration(opts options, cookbooks map[string]*Cookbook, endpointMo
 	if !opts.bootstrap {
 		return warnings, nil
 	}
-
-	addresses := []struct{ name, address string }{
-		{"nginx bootstrap published endpoint", opts.nginxAddr},
-		{"redis bootstrap published endpoint", opts.redisAddr},
-	}
+	addresses := []struct{ name, address string }{{"nginx bootstrap published endpoint", opts.nginxAddr}, {"redis bootstrap published endpoint", opts.redisAddr}}
 	listeners := make([]net.Listener, 0, len(addresses))
 	defer func() {
 		for _, l := range listeners {
@@ -384,8 +380,6 @@ func validateScenarioOverrides(cookbooks map[string]*Cookbook, overrides map[str
 	for key, value := range overrides {
 		cb, ok := known[key]
 		if !ok {
-			// Exact names created later by the real orchestrator are valid. Their
-			// cookbook is resolved from the name/image when Docker create is called.
 			continue
 		}
 		if _, ok := cb.Seeds[strconv.Itoa(value)]; !ok {
@@ -450,81 +444,6 @@ func clientHostForBind(host string) string {
 	}
 }
 
-func containerAddress(cb *Cookbook) string {
-	if cb == nil {
-		return ""
-	}
-	return net.JoinHostPort(cb.Defaults.IPAddress, strconv.Itoa(cb.Defaults.ContainerPort))
-}
-
-func startNginxMocks(engine *Engine, published string, cb *Cookbook, endpointMode string, logger plainLogger) ([]*NginxMock, error) {
-	addresses := []string{published}
-	if endpointMode != "off" && cb != nil {
-		direct := containerAddress(cb)
-		if direct != "" && direct != published {
-			addresses = append(addresses, direct)
-		}
-	}
-	mocks := make([]*NginxMock, 0, len(addresses))
-	for index, address := range addresses {
-		mock := newNginxMock(engine, address)
-		if err := mock.Start(); err != nil {
-			if index > 0 && endpointMode == "auto" {
-				logger.Printf("WARNING: nginx container endpoint %s unavailable; continuing with published endpoint: %v", address, err)
-				continue
-			}
-			_ = closeNginxMocks(context.Background(), mocks)
-			return nil, fmt.Errorf("bind %s: %w", address, err)
-		}
-		mocks = append(mocks, mock)
-	}
-	return mocks, nil
-}
-
-func startRedisMocks(engine *Engine, published string, cb *Cookbook, endpointMode string, logger plainLogger) ([]*RedisMock, error) {
-	addresses := []string{published}
-	if endpointMode != "off" && cb != nil {
-		direct := containerAddress(cb)
-		if direct != "" && direct != published {
-			addresses = append(addresses, direct)
-		}
-	}
-	mocks := make([]*RedisMock, 0, len(addresses))
-	for index, address := range addresses {
-		mock := newRedisMock(engine, address)
-		if err := mock.Start(); err != nil {
-			if index > 0 && endpointMode == "auto" {
-				logger.Printf("WARNING: redis container endpoint %s unavailable; continuing with published endpoint: %v", address, err)
-				continue
-			}
-			_ = closeRedisMocks(context.Background(), mocks)
-			return nil, fmt.Errorf("bind %s: %w", address, err)
-		}
-		mocks = append(mocks, mock)
-	}
-	return mocks, nil
-}
-
-func closeNginxMocks(ctx context.Context, mocks []*NginxMock) error {
-	var first error
-	for _, mock := range mocks {
-		if err := mock.Close(ctx); err != nil && first == nil {
-			first = err
-		}
-	}
-	return first
-}
-
-func closeRedisMocks(ctx context.Context, mocks []*RedisMock) error {
-	var first error
-	for _, mock := range mocks {
-		if err := mock.Close(ctx); err != nil && first == nil {
-			first = err
-		}
-	}
-	return first
-}
-
 func listenUnixSocket(path string, mode os.FileMode) (net.Listener, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
@@ -545,6 +464,9 @@ func listenUnixSocket(path string, mode os.FileMode) (net.Listener, error) {
 }
 
 func prepareUnixSocketPath(path string) error {
+	if err := validateUnixSocketPath(path); err != nil {
+		return err
+	}
 	info, err := os.Lstat(path)
 	if os.IsNotExist(err) {
 		return nil
@@ -555,19 +477,27 @@ func prepareUnixSocketPath(path string) error {
 	if info.Mode()&os.ModeSocket == 0 {
 		return fmt.Errorf("refusing to remove non-socket path %s", path)
 	}
-
 	connection, dialErr := net.DialTimeout("unix", path, 250*time.Millisecond)
 	if dialErr == nil {
 		_ = connection.Close()
 		return fmt.Errorf("Docker socket %s is active; stop the existing docker-zero process or choose another --socket", path)
 	}
-	// ECONNREFUSED is the normal result for an abandoned Unix socket. ENOENT
-	// covers a race where another process removed it after Lstat.
 	if !errors.Is(dialErr, syscall.ECONNREFUSED) && !errors.Is(dialErr, syscall.ENOENT) {
 		return fmt.Errorf("cannot verify whether existing Docker socket %s is stale: %w", path, dialErr)
 	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove stale Docker socket %s: %w", path, err)
+	}
+	return nil
+}
+
+func validateUnixSocketPath(path string) error {
+	const maxUnixSocketPathBytes = 107
+	if path == "" {
+		return errors.New("Docker socket path is empty")
+	}
+	if len([]byte(path)) > maxUnixSocketPathBytes {
+		return fmt.Errorf("Docker socket path is too long for AF_UNIX: %d bytes (max %d): %s", len([]byte(path)), maxUnixSocketPathBytes, path)
 	}
 	return nil
 }
@@ -579,13 +509,6 @@ func printFailure(stderr io.Writer, category string, err error) {
 		return
 	}
 	fmt.Fprintf(stderr, "%s: %s\n", category, renderError(err))
-}
-
-type plainLogger struct{ writer io.Writer }
-
-func newPlainLogger(writer io.Writer) plainLogger { return plainLogger{writer: writer} }
-func (l plainLogger) Printf(format string, args ...any) {
-	fmt.Fprintf(l.writer, "docker-zero: "+format+"\n", args...)
 }
 
 func reportRuntimeError(target chan<- error, err error) {
