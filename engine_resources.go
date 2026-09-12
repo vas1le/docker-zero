@@ -141,7 +141,7 @@ func (e *Engine) findExec(id string) (*ExecInstance, error) {
 	defer e.mu.RUnlock()
 	exec, ok := e.execs[id]
 	if !ok {
-		return nil, fmt.Errorf("No such exec instance: %s", id)
+		return nil, fmt.Errorf("no such exec instance: %s", id)
 	}
 	return exec, nil
 }

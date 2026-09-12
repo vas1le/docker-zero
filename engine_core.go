@@ -141,7 +141,7 @@ func (e *Engine) createContainer(name, image string, labels map[string]string, e
 		return nil, err
 	}
 	if image == "" {
-		return nil, errors.New("Image is required")
+		return nil, errors.New("image is required")
 	}
 	cb, err := e.cookbookFor(name, image)
 	if err != nil {
@@ -155,7 +155,7 @@ func (e *Engine) createContainer(name, image string, labels map[string]string, e
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if _, exists := e.names[name]; exists {
-		return nil, fmt.Errorf("Conflict. The container name %q is already in use", name)
+		return nil, fmt.Errorf("conflict: the container name %q is already in use", name)
 	}
 	id := containerID(name, e.counter.Add(1))
 	container := newContainer(id, name, image, cb, seed)
@@ -212,7 +212,7 @@ func (e *Engine) findContainer(ref string) (*Container, error) {
 		}
 	}
 	if match == nil {
-		return nil, fmt.Errorf("No such container: %s", ref)
+		return nil, fmt.Errorf("no such container: %s", ref)
 	}
 	return match, nil
 }
@@ -258,7 +258,7 @@ func (e *Engine) removeContainer(ref string, force bool) error {
 		return err
 	}
 	if container.isRunning() && !force {
-		return fmt.Errorf("You cannot remove a running container %s. Stop the container before attempting removal or force remove", container.ID)
+		return fmt.Errorf("cannot remove running container %s: stop it first or force remove", container.ID)
 	}
 	_ = e.stopContainerRuntime(container)
 	e.mu.Lock()

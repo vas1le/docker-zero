@@ -61,7 +61,7 @@ func handleBuiltInRedisForEngine(engine *Engine, container *Container, writer *b
 		}
 		container.mu.Unlock()
 		engine.replicateRedisMutation(container, command)
-		_, _ = writer.WriteString(fmt.Sprintf(":%d\r\n", deleted))
+		_, _ = fmt.Fprintf(writer, ":%d\r\n", deleted)
 	case "EXISTS":
 		exists := 0
 		container.mu.Lock()
@@ -71,7 +71,7 @@ func handleBuiltInRedisForEngine(engine *Engine, container *Container, writer *b
 			}
 		}
 		container.mu.Unlock()
-		_, _ = writer.WriteString(fmt.Sprintf(":%d\r\n", exists))
+		_, _ = fmt.Fprintf(writer, ":%d\r\n", exists)
 	case "INCR":
 		if len(command) != 2 {
 			_, _ = writer.WriteString("-ERR wrong number of arguments for 'incr' command\r\n")
@@ -83,7 +83,7 @@ func handleBuiltInRedisForEngine(engine *Engine, container *Container, writer *b
 		container.KV[command[1]] = strconv.Itoa(value)
 		container.mu.Unlock()
 		engine.replicateRedisMutation(container, []string{"SET", command[1], strconv.Itoa(value)})
-		_, _ = writer.WriteString(fmt.Sprintf(":%d\r\n", value))
+		_, _ = fmt.Fprintf(writer, ":%d\r\n", value)
 	case "INFO":
 		writeRESPBulk(writer, engine.redisInfo(container))
 	case "ROLE":
@@ -98,7 +98,7 @@ func handleBuiltInRedisForEngine(engine *Engine, container *Container, writer *b
 			if link != "up" {
 				state = "connect"
 			}
-			_, _ = writer.WriteString(fmt.Sprintf("*5\r\n$5\r\nslave\r\n$%d\r\n%s\r\n:%d\r\n$%d\r\n%s\r\n:0\r\n", len(masterHost), masterHost, masterPort, len(state), state))
+			_, _ = fmt.Fprintf(writer, "*5\r\n$5\r\nslave\r\n$%d\r\n%s\r\n:%d\r\n$%d\r\n%s\r\n:0\r\n", len(masterHost), masterHost, masterPort, len(state), state)
 		} else {
 			_, _ = writer.WriteString("*3\r\n$6\r\nmaster\r\n:0\r\n*0\r\n")
 		}

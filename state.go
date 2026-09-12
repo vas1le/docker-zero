@@ -397,10 +397,11 @@ func (c *Container) applyPatchLocked(patch StatePatch) {
 	}
 	if c.Health.Status != oldHealth && c.Health.Status != "" {
 		exitCode := 0
-		if c.Health.Status == "unhealthy" {
+		switch c.Health.Status {
+		case "unhealthy":
 			exitCode = 1
 			c.Health.FailingStreak++
-		} else if c.Health.Status == "healthy" {
+		case "healthy":
 			c.Health.FailingStreak = 0
 		}
 		c.Health.Log = append(c.Health.Log, HealthLog{

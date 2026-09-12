@@ -81,7 +81,7 @@ func TestSeedTwoCrashAndRestartLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine := newEngine(cookbooks, 2, nil, ledger)
 	container, err := engine.createContainer("nginx-zero", "nginx:alpine", nil, nil, nil)
 	if err != nil {
@@ -119,7 +119,7 @@ func TestStopStartPreservesRestartCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine := newEngine(cookbooks, 0, nil, ledger)
 	container, err := engine.createContainer("nginx-zero", "nginx:alpine", nil, nil, nil)
 	if err != nil {
@@ -147,7 +147,7 @@ func TestRestartCreatesNewSyntheticPID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine := newEngine(cookbooks, 0, nil, ledger)
 	container, err := engine.createContainer("redis-zero", "redis:7-alpine", nil, nil, nil)
 	if err != nil {
@@ -182,7 +182,7 @@ func TestContainerNameScenarioOverrideWinsOverKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine := newEngine(cookbooks, 0, map[string]int{"nginx": 1, "special-nginx": 2}, ledger)
 	container, err := engine.createContainer("special-nginx", "nginx:alpine", nil, nil, nil)
 	if err != nil {
@@ -202,7 +202,7 @@ func TestConcurrentContainerAdvanceIsSafeAndExact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine := newEngine(cookbooks, 0, nil, ledger)
 	container, err := engine.createContainer("nginx-zero", "nginx:alpine", nil, nil, nil)
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 
 func TestCleanStopPreservesLastHealthState(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	container, err := engine.createContainer("health-stop", "nginx:alpine", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +38,7 @@ func TestCleanStopPreservesLastHealthState(t *testing.T) {
 
 func TestConfigureContainerNetworksIsAtomicOnAllocationFailure(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	container, err := engine.createContainer("atomic-network", "nginx:alpine", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestUnixSocketPathLengthDiagnostic(t *testing.T) {
 
 func TestEventsAndSystemDFAreMachineClassifiedUnsupported(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	api := &DockerAPI{engine: engine}
 	for _, path := range []string{"/events", "/system/df"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
@@ -117,7 +117,7 @@ func TestEventsAndSystemDFAreMachineClassifiedUnsupported(t *testing.T) {
 
 func TestPauseUnpauseAndExecConflict(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	container, err := engine.createContainer("pause-test", "nginx:alpine", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)

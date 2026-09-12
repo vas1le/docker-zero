@@ -51,7 +51,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 	if opts.showVersion {
-		fmt.Fprintf(stdout, "docker-zero %s\n", version)
+		_, _ = fmt.Fprintf(stdout, "docker-zero %s\n", version)
 		return exitOK
 	}
 
@@ -183,7 +183,7 @@ func serve(opts options, cookbooks map[string]*Cookbook, overrides map[string]in
 	runtimeErrors := make(chan error, 16)
 	go func() {
 		if err := dockerServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			reportRuntimeError(runtimeErrors, fmt.Errorf("Docker API server: %w", err))
+			reportRuntimeError(runtimeErrors, fmt.Errorf("docker API server: %w", err))
 		}
 	}()
 	forwardRuntimeErrors(runtimeErrors, "ledger", ledger.Errors())
@@ -221,40 +221,40 @@ func serve(opts options, cookbooks map[string]*Cookbook, overrides map[string]in
 }
 
 func printStartupSummary(stdout io.Writer, opts options, overrides map[string]int, endpointMode string, ledger *Ledger) {
-	fmt.Fprintf(stdout, "docker-zero %s READY\n", version)
-	fmt.Fprintf(stdout, "  Docker socket     : %s\n", opts.socketPath)
-	fmt.Fprintf(stdout, "  Global seed       : %d\n", opts.seed)
+	_, _ = fmt.Fprintf(stdout, "docker-zero %s READY\n", version)
+	_, _ = fmt.Fprintf(stdout, "  Docker socket     : %s\n", opts.socketPath)
+	_, _ = fmt.Fprintf(stdout, "  Global seed       : %d\n", opts.seed)
 	if len(overrides) > 0 {
-		fmt.Fprintf(stdout, "  Overrides         : %s\n", formatOverrides(overrides))
+		_, _ = fmt.Fprintf(stdout, "  Overrides         : %s\n", formatOverrides(overrides))
 	}
-	fmt.Fprintf(stdout, "  Container endpoints: %s\n", endpointMode)
-	fmt.Fprintf(stdout, "  Published ports   : Compose/Docker-driven; conflicts are enforced at container start\n")
+	_, _ = fmt.Fprintf(stdout, "  Container endpoints: %s\n", endpointMode)
+	_, _ = fmt.Fprintf(stdout, "  Published ports   : Compose/Docker-driven; conflicts are enforced at container start\n")
 	if opts.bootstrap {
-		fmt.Fprintf(stdout, "  Bootstrap nginx   : %s\n", opts.nginxAddr)
-		fmt.Fprintf(stdout, "  Bootstrap redis   : %s\n", opts.redisAddr)
+		_, _ = fmt.Fprintf(stdout, "  Bootstrap nginx   : %s\n", opts.nginxAddr)
+		_, _ = fmt.Fprintf(stdout, "  Bootstrap redis   : %s\n", opts.redisAddr)
 	}
-	fmt.Fprintf(stdout, "  Ledger            : %s\n", ledger.RunDir())
-	fmt.Fprintf(stdout, "  Docker host       : DOCKER_HOST=unix://%s\n", opts.socketPath)
+	_, _ = fmt.Fprintf(stdout, "  Ledger            : %s\n", ledger.RunDir())
+	_, _ = fmt.Fprintf(stdout, "  Docker host       : DOCKER_HOST=unix://%s\n", opts.socketPath)
 }
 
 func printCheckSummary(stdout io.Writer, opts options, cookbooks map[string]*Cookbook, overrides map[string]int, endpointMode string, mode os.FileMode, warnings []string) {
 	_ = cookbooks
-	fmt.Fprintf(stdout, "docker-zero %s CHECK OK\n", version)
-	fmt.Fprintf(stdout, "  Cookbooks         : nginx, redis\n")
-	fmt.Fprintf(stdout, "  Seeds             : 0, 1, 2\n")
-	fmt.Fprintf(stdout, "  Docker socket     : %s (%#o)\n", opts.socketPath, mode.Perm())
-	fmt.Fprintf(stdout, "  Published ports   : Docker/Compose-driven; allocated and conflict-checked on start\n")
-	fmt.Fprintf(stdout, "  Container IPs     : allocated independently per virtual network\n")
-	fmt.Fprintf(stdout, "  Container mode    : %s\n", endpointMode)
+	_, _ = fmt.Fprintf(stdout, "docker-zero %s CHECK OK\n", version)
+	_, _ = fmt.Fprintf(stdout, "  Cookbooks         : nginx, redis\n")
+	_, _ = fmt.Fprintf(stdout, "  Seeds             : 0, 1, 2\n")
+	_, _ = fmt.Fprintf(stdout, "  Docker socket     : %s (%#o)\n", opts.socketPath, mode.Perm())
+	_, _ = fmt.Fprintf(stdout, "  Published ports   : Docker/Compose-driven; allocated and conflict-checked on start\n")
+	_, _ = fmt.Fprintf(stdout, "  Container IPs     : allocated independently per virtual network\n")
+	_, _ = fmt.Fprintf(stdout, "  Container mode    : %s\n", endpointMode)
 	if opts.bootstrap {
-		fmt.Fprintf(stdout, "  Bootstrap nginx   : %s\n", opts.nginxAddr)
-		fmt.Fprintf(stdout, "  Bootstrap redis   : %s\n", opts.redisAddr)
+		_, _ = fmt.Fprintf(stdout, "  Bootstrap nginx   : %s\n", opts.nginxAddr)
+		_, _ = fmt.Fprintf(stdout, "  Bootstrap redis   : %s\n", opts.redisAddr)
 	}
 	if len(overrides) > 0 {
-		fmt.Fprintf(stdout, "  Overrides         : %s\n", formatOverrides(overrides))
+		_, _ = fmt.Fprintf(stdout, "  Overrides         : %s\n", formatOverrides(overrides))
 	}
 	for _, warning := range warnings {
-		fmt.Fprintf(stdout, "  WARNING           : %s\n", warning)
+		_, _ = fmt.Fprintf(stdout, "  WARNING           : %s\n", warning)
 	}
 }
 
@@ -480,7 +480,7 @@ func prepareUnixSocketPath(path string) error {
 	connection, dialErr := net.DialTimeout("unix", path, 250*time.Millisecond)
 	if dialErr == nil {
 		_ = connection.Close()
-		return fmt.Errorf("Docker socket %s is active; stop the existing docker-zero process or choose another --socket", path)
+		return fmt.Errorf("docker socket %s is active; stop the existing docker-zero process or choose another --socket", path)
 	}
 	if !errors.Is(dialErr, syscall.ECONNREFUSED) && !errors.Is(dialErr, syscall.ENOENT) {
 		return fmt.Errorf("cannot verify whether existing Docker socket %s is stale: %w", path, dialErr)
@@ -494,10 +494,10 @@ func prepareUnixSocketPath(path string) error {
 func validateUnixSocketPath(path string) error {
 	const maxUnixSocketPathBytes = 107
 	if path == "" {
-		return errors.New("Docker socket path is empty")
+		return errors.New("docker socket path is empty")
 	}
 	if len([]byte(path)) > maxUnixSocketPathBytes {
-		return fmt.Errorf("Docker socket path is too long for AF_UNIX: %d bytes (max %d): %s", len([]byte(path)), maxUnixSocketPathBytes, path)
+		return fmt.Errorf("docker socket path is too long for AF_UNIX: %d bytes (max %d): %s", len([]byte(path)), maxUnixSocketPathBytes, path)
 	}
 	return nil
 }
@@ -505,10 +505,10 @@ func validateUnixSocketPath(path string) error {
 func printFailure(stderr io.Writer, category string, err error) {
 	var diagnostic *DiagnosticError
 	if errors.As(err, &diagnostic) {
-		fmt.Fprintln(stderr, diagnostic.Render())
+		_, _ = fmt.Fprintln(stderr, diagnostic.Render())
 		return
 	}
-	fmt.Fprintf(stderr, "%s: %s\n", category, renderError(err))
+	_, _ = fmt.Fprintf(stderr, "%s: %s\n", category, renderError(err))
 }
 
 func reportRuntimeError(target chan<- error, err error) {

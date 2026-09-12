@@ -92,7 +92,7 @@ func TestCookbookDuplicateKeyIsRejectedInsteadOfSilentlyOverwritten(t *testing.T
 		return bytes.Replace(data, []byte(`"kind": "nginx",`), []byte("\"kind\": \"nginx\",\n  \"kind\": \"nginx\","), 1)
 	})
 	_, err := loadCookbooks(dir)
-	requireDiagnostic(t, err, "CONFIG_DUPLICATE_KEY", "/kind", 3)
+	_ = requireDiagnostic(t, err, "CONFIG_DUPLICATE_KEY", "/kind", 3)
 }
 
 func TestCookbookInvalidLifecycleValueIsRejected(t *testing.T) {
@@ -117,7 +117,7 @@ func TestCookbookTypeMismatchShowsFieldAndLine(t *testing.T) {
 		return bytes.Replace(data, []byte(`"host_port": 18080`), []byte(`"host_port": "eighteen"`), 1)
 	})
 	_, err := loadCookbooks(dir)
-	requireDiagnostic(t, err, "CONFIG_TYPE_ERROR", "/defaults/host_port", 14)
+	_ = requireDiagnostic(t, err, "CONFIG_TYPE_ERROR", "/defaults/host_port", 14)
 }
 
 func TestCookbookInvalidRESPReplyIsRejected(t *testing.T) {
@@ -165,7 +165,7 @@ func TestCheckModeDetectsPortConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer testClose(t, listener)
 	redisProbe, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +207,7 @@ func TestUnixSocketRefusesActiveOwnerAndRecoversStaleSocket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("recover stale socket: %v", err)
 	}
-	defer second.Close()
+	defer testClose(t, second)
 }
 
 func TestUnixSocketNeverDeletesRegularFile(t *testing.T) {

@@ -291,7 +291,7 @@ func (n *NginxContainerHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 }
 
 func handleRedisContainerConnection(engine *Engine, container *Container, connection net.Conn) {
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	defer recoverTCPHandler(engine, "redis container connection")
 	_ = connection.SetDeadline(time.Now().Add(5 * time.Minute))
 	reader := bufio.NewReader(connection)
