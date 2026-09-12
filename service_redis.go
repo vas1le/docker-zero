@@ -110,7 +110,7 @@ func (r *RedisMock) Close(ctx context.Context) error {
 
 func (r *RedisMock) handleConnection(connection net.Conn) {
 	defer r.wg.Done()
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	defer func() {
 		r.connMu.Lock()
 		delete(r.connections, connection)
@@ -234,7 +234,7 @@ func handleBuiltInRedis(container *Container, writer *bufio.Writer, command []st
 			}
 		}
 		container.mu.Unlock()
-		_, _ = writer.WriteString(fmt.Sprintf(":%d\r\n", deleted))
+		_, _ = fmt.Fprintf(writer, ":%d\r\n", deleted)
 	case "EXISTS":
 		exists := 0
 		container.mu.Lock()
@@ -244,7 +244,7 @@ func handleBuiltInRedis(container *Container, writer *bufio.Writer, command []st
 			}
 		}
 		container.mu.Unlock()
-		_, _ = writer.WriteString(fmt.Sprintf(":%d\r\n", exists))
+		_, _ = fmt.Fprintf(writer, ":%d\r\n", exists)
 	case "INCR":
 		if len(command) != 2 {
 			_, _ = writer.WriteString("-ERR wrong number of arguments for 'incr' command\r\n")
@@ -255,7 +255,7 @@ func handleBuiltInRedis(container *Container, writer *bufio.Writer, command []st
 		value++
 		container.KV[command[1]] = strconv.Itoa(value)
 		container.mu.Unlock()
-		_, _ = writer.WriteString(fmt.Sprintf(":%d\r\n", value))
+		_, _ = fmt.Fprintf(writer, ":%d\r\n", value)
 	case "INFO":
 		state := container.stateSnapshot()
 		body := fmt.Sprintf("# Server\r\nredis_version:7.4.0-docker-zero\r\nprocess_id:1\r\n# Replication\r\nrole:master\r\n# DockerZero\r\nseed:%d\r\nhealth:%s\r\n", container.Seed, state.Health)
@@ -331,7 +331,7 @@ func readRESPCommand(reader *bufio.Reader) ([]string, error) {
 }
 
 func writeRESPBulk(writer *bufio.Writer, value string) {
-	_, _ = writer.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(value), value))
+	_, _ = fmt.Fprintf(writer, "$%d\r\n%s\r\n", len(value), value)
 }
 
 func sanitizeRedisError(value string) string {

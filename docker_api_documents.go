@@ -11,10 +11,16 @@ import (
 func containerListDocument(c *Container, networks map[string]any) map[string]any {
 	snapshot := c.snapshot()
 	state := snapshot.State
+	c.mu.Lock()
+	imageID := c.ImageID
+	command := strings.Join(append([]string(nil), c.Command...), " ")
+	created := c.Created.Unix()
+	labels := cloneStringMap(c.Labels)
+	c.mu.Unlock()
 	return map[string]any{
-		"Id": snapshot.ID, "Names": []string{"/" + snapshot.Name}, "Image": snapshot.Image, "ImageID": c.ImageID,
-		"Command": strings.Join(c.Command, " "), "Created": c.Created.Unix(), "Ports": dockerPortSummary(c),
-		"Labels": cloneStringMap(c.Labels), "State": state.Status, "Status": humanContainerStatus(c),
+		"Id": snapshot.ID, "Names": []string{"/" + snapshot.Name}, "Image": snapshot.Image, "ImageID": imageID,
+		"Command": command, "Created": created, "Ports": dockerPortSummary(c),
+		"Labels": labels, "State": state.Status, "Status": humanContainerStatus(c),
 		"HostConfig":      map[string]any{"NetworkMode": snapshot.NetworkMode, "Annotations": nil},
 		"NetworkSettings": map[string]any{"Networks": networks}, "Mounts": []any{},
 	}

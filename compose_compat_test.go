@@ -16,7 +16,7 @@ func composeFilter(value string) string {
 
 func TestComposeProjectFilteringAndNetworkingConfig(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	api := &DockerAPI{engine: engine}
 
 	for _, body := range []string{
@@ -94,7 +94,7 @@ func TestComposeProjectFilteringAndNetworkingConfig(t *testing.T) {
 
 func TestComposeVolumeProjectFilter(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	api := &DockerAPI{engine: engine}
 	for _, body := range []string{
 		`{"Name":"project_data","Labels":{"com.docker.compose.project":"project"}}`,

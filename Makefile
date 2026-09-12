@@ -4,7 +4,7 @@ BINARY := dist/docker-zero-linux-amd64
 ARM64_BINARY := dist/docker-zero-linux-arm64
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build build-arm64 build-all fmt fmt-check lint test test-repeat race race-repeat vet vuln pycheck integration integration-retest doctor matrix-smoke matrix-harness-test compose-topology fuzz-smoke verify retest checksums release hooks pre-commit-install clean
+.PHONY: all build build-arm64 build-all fmt fmt-check lint test test-repeat race race-repeat vet vuln pycheck integration integration-retest doctor matrix-smoke matrix-harness-test compose-topology fuzz-smoke verify retest checksums release hooks clean
 
 all: verify
 
@@ -82,7 +82,7 @@ fuzz-smoke:
 	go test -run='^$$' -fuzz=FuzzRESPReplyValidator -fuzztime=2s .
 	go test -run='^$$' -fuzz=FuzzCookbookDecoderNeverPanics -fuzztime=2s .
 
-verify: fmt-check test race vet pycheck integration doctor matrix-smoke matrix-harness-test
+verify: fmt-check lint test race vet pycheck integration doctor matrix-smoke matrix-harness-test
 
 retest: verify test-repeat race-repeat integration-retest fuzz-smoke
 
@@ -92,9 +92,6 @@ checksums: build-all
 release: verify compose-topology checksums
 
 hooks:
-	git config core.hooksPath .githooks
-
-pre-commit-install:
 	pre-commit install
 
 clean:

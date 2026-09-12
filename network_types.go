@@ -1,7 +1,5 @@
 package main
 
-import "fmt"
-
 // PortBinding models one Docker HostConfig.PortBindings entry. RequestedHostPort
 // is zero when Docker/Compose requested an ephemeral host port. HostPort is the
 // concrete port currently assigned (and is preserved across stop/start).
@@ -11,14 +9,6 @@ type PortBinding struct {
 	HostPort          int    `json:"host_port"`
 	Protocol          string `json:"protocol"`
 	ContainerPort     int    `json:"container_port"`
-}
-
-func (p PortBinding) key() string {
-	protocol := p.Protocol
-	if protocol == "" {
-		protocol = "tcp"
-	}
-	return fmt.Sprintf("%d/%s", p.ContainerPort, protocol)
 }
 
 type RedisReplicationState struct {
