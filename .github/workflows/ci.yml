@@ -69,7 +69,7 @@ jobs:
           cache: true
       - name: Build Linux amd64 and arm64
         run: make checksums
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: docker-zero-${{ github.sha }}
           path: |
