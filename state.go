@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,6 +71,7 @@ type ContainerStateSnapshot struct {
 	Status       string `json:"status"`
 	Running      bool   `json:"running"`
 	Restarting   bool   `json:"restarting"`
+	Paused       bool   `json:"paused"`
 	Dead         bool   `json:"dead"`
 	Health       string `json:"health"`
 	ExitCode     int    `json:"exit_code"`
@@ -182,12 +182,6 @@ func (c *Container) setPrimaryIP(ip string) {
 	c.mu.Unlock()
 }
 
-func (c *Container) primaryIP() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.PrimaryIP
-}
-
 func (c *Container) clonePortBindings() map[string][]PortBinding {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -242,6 +236,7 @@ func (c *Container) stateSnapshotLocked() ContainerStateSnapshot {
 		Status:       c.Status,
 		Running:      c.Running,
 		Restarting:   c.Restarting,
+		Paused:       c.Paused,
 		Dead:         c.Dead,
 		Health:       c.Health.Status,
 		ExitCode:     c.ExitCode,
@@ -354,18 +349,27 @@ func (c *Container) applyPatchLocked(patch StatePatch) {
 	switch c.Status {
 	case "running":
 		c.Running = true
+		c.Paused = false
+		c.Restarting = false
+		c.Dead = false
+	case "paused":
+		c.Running = true
+		c.Paused = true
 		c.Restarting = false
 		c.Dead = false
 	case "restarting":
 		c.Running = true
+		c.Paused = false
 		c.Restarting = true
 		c.Dead = false
 	case "created", "exited":
 		c.Running = false
+		c.Paused = false
 		c.Restarting = false
 		c.Dead = false
 	case "dead":
 		c.Running = false
+		c.Paused = false
 		c.Restarting = false
 		c.Dead = true
 	default:
@@ -466,9 +470,38 @@ func (c *Container) stop(exitCode int) (ContainerStateSnapshot, ContainerStateSn
 		Status:     stringPtr("exited"),
 		Running:    boolPtr(false),
 		Restarting: boolPtr(false),
-		Health:     stringPtr("unhealthy"),
 		ExitCode:   intPtr(exitCode),
 	})
+}
+
+func (c *Container) pause() (ContainerStateSnapshot, ContainerStateSnapshot, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	if !c.Running || c.Restarting || c.Dead {
+		return before, before, fmt.Errorf("container %s is not running", c.Name)
+	}
+	if c.Paused {
+		return before, before, nil
+	}
+	c.Status = "paused"
+	c.Paused = true
+	return before, c.stateSnapshotLocked(), nil
+}
+
+func (c *Container) unpause() (ContainerStateSnapshot, ContainerStateSnapshot, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	if !c.Paused {
+		return before, before, fmt.Errorf("container %s is not paused", c.Name)
+	}
+	c.Status = "running"
+	c.Running = true
+	c.Paused = false
+	c.Restarting = false
+	c.Dead = false
+	return before, c.stateSnapshotLocked(), nil
 }
 
 func (c *Container) restart() (ContainerStateSnapshot, ContainerStateSnapshot) {
@@ -539,21 +572,6 @@ func (c *Container) allLogs() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return strings.Join(c.Logs, "")
-}
-
-func (c *Container) sortedCounters() [][2]any {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	keys := make([]string, 0, len(c.Counters))
-	for key := range c.Counters {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	out := make([][2]any, 0, len(keys))
-	for _, key := range keys {
-		out = append(out, [2]any{key, c.Counters[key]})
-	}
-	return out
 }
 
 func formatDockerTime(t time.Time) string {
