@@ -272,7 +272,7 @@ func (n *NginxContainerHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 	})
 	container.appendLog(fmt.Sprintf("nginx-zero[%s]: %s %s -> %d (request #%d)\n", container.Name, req.Method, req.URL.Path, response.Status, count))
 
-	if response.Close || !state.Running || state.Restarting || state.Dead {
+	if response.Close || !state.Running || state.Paused || state.Restarting || state.Dead {
 		go n.engine.syncRuntimeForState(container)
 		closeHTTPConnection(w)
 		return
@@ -338,7 +338,7 @@ func handleRedisContainerConnection(engine *Engine, container *Container, connec
 		})
 		container.appendLog(fmt.Sprintf("redis-zero[%s]: %s -> %s (request #%d)\n", container.Name, strings.Join(command, " "), responseDescription, count))
 
-		if response.Close || !state.Running || state.Restarting || state.Dead {
+		if response.Close || !state.Running || state.Paused || state.Restarting || state.Dead {
 			go engine.syncRuntimeForState(container)
 			return
 		}
@@ -445,7 +445,7 @@ func (e *Engine) stopContainerRuntime(c *Container) error {
 
 func (e *Engine) syncRuntimeForState(c *Container) {
 	state := c.stateSnapshot()
-	if state.Running && !state.Restarting && !state.Dead && state.Status == "running" {
+	if state.Running && !state.Restarting && !state.Dead && (state.Status == "running" || state.Status == "paused") {
 		if err := e.startContainerRuntime(c); err != nil {
 			if errors.Is(err, errEngineRuntimeClosing) {
 				return
