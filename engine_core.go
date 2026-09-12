@@ -153,8 +153,8 @@ func (e *Engine) createContainer(name, image string, labels map[string]string, e
 	}
 
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if _, exists := e.names[name]; exists {
+		e.mu.Unlock()
 		return nil, fmt.Errorf("conflict: the container name %q is already in use", name)
 	}
 	id := containerID(name, e.counter.Add(1))
@@ -164,6 +164,7 @@ func (e *Engine) createContainer(name, image string, labels map[string]string, e
 	container.Command = append([]string(nil), command...)
 	e.containers[id] = container
 	e.names[name] = id
+	e.mu.Unlock()
 
 	after := container.stateSnapshot()
 	e.ledger.Log(LedgerEntry{
@@ -262,13 +263,13 @@ func (e *Engine) removeContainer(ref string, force bool) error {
 	}
 	_ = e.stopContainerRuntime(container)
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	delete(e.containers, container.ID)
 	delete(e.runtimes, container.ID)
 	delete(e.names, container.Name)
 	for _, network := range e.networks {
 		delete(network.Containers, container.ID)
 	}
+	e.mu.Unlock()
 	before := container.stateSnapshot()
 	e.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.remove", Before: &before})
 	return nil
