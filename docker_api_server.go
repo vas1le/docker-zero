@@ -157,13 +157,8 @@ func (api *DockerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		api.handleExecAction(w, r, strings.TrimPrefix(path, "/exec/"))
 		return
 	}
-	if path == "/events" && r.Method == http.MethodGet {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if path == "/system/df" && r.Method == http.MethodGet {
-		writeJSON(w, http.StatusOK, map[string]any{"LayersSize": 0, "Images": []any{}, "Containers": []any{}, "Volumes": []any{}, "BuildCache": []any{}})
+	if (path == "/events" || path == "/system/df") && r.Method == http.MethodGet {
+		writeUnsupportedDockerError(w, http.StatusNotImplemented, fmt.Sprintf("unsupported Docker API request: %s %s", r.Method, path))
 		return
 	}
 
@@ -181,8 +176,12 @@ func (api *DockerAPI) handlePing(w http.ResponseWriter, r *http.Request) {
 
 func (api *DockerAPI) handleInfo(w http.ResponseWriter) {
 	containers := api.engine.listContainers(true)
-	running, stopped := 0, 0
+	running, paused, stopped := 0, 0, 0
 	for _, c := range containers {
+		state := c.stateSnapshot()
+		if state.Paused {
+			paused++
+		}
 		if c.isRunning() {
 			running++
 		} else {
@@ -193,7 +192,7 @@ func (api *DockerAPI) handleInfo(w http.ResponseWriter) {
 		"ID":                 "DOCKERZERO000000000000000000000000000000000000000000000000000",
 		"Containers":         len(containers),
 		"ContainersRunning":  running,
-		"ContainersPaused":   0,
+		"ContainersPaused":   paused,
 		"ContainersStopped":  stopped,
 		"Images":             len(api.engine.cookbooks),
 		"Driver":             "docker-zero",
