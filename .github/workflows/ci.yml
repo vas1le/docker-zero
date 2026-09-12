@@ -1,256 +1,83 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  review-autofix:
-    name: Verify and finalize review cleanup
-    if: github.event_name == 'pull_request' && github.head_ref == 'fix/review-hardening'
+  test:
+    name: Test and lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: fix/review-hardening
-          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - name: Enable strict low-port tests
+      - name: Enable unprivileged low ports for strict virtual-endpoint tests
         run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
-      - name: Apply explicit lint fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > test_cleanup_test.go <<'EOF'
-          package main
-
-          import (
-          	"context"
-          	"io"
-          	"testing"
-          )
-
-          func testClose(t *testing.T, closer io.Closer) {
-          	t.Helper()
-          	if err := closer.Close(); err != nil {
-          		t.Errorf("close %T: %v", closer, err)
-          	}
-          }
-
-          func testCloseLedger(t *testing.T, ledger *Ledger) {
-          	t.Helper()
-          	if err := ledger.Close(); err != nil {
-          		t.Errorf("close ledger: %v", err)
-          	}
-          }
-
-          func testCloseRuntimes(t *testing.T, engine *Engine) {
-          	t.Helper()
-          	if err := engine.closeRuntimes(context.Background()); err != nil {
-          		t.Errorf("close runtimes: %v", err)
-          	}
-          }
-
-          func testCloseRedisMock(t *testing.T, mock *RedisMock) {
-          	t.Helper()
-          	if err := mock.Close(context.Background()); err != nil {
-          		t.Errorf("close Redis mock: %v", err)
-          	}
-          }
-          EOF
-
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-
-          for name in [
-              'api_runtime_test.go', 'collision_test.go', 'compose_compat_test.go',
-              'docker_zero_test.go', 'topology_test.go', 'review_regression_test.go'
-          ]:
-              p = Path(name)
-              s = p.read_text()
-              s = s.replace('defer ledger.Close()', 'defer testCloseLedger(t, ledger)')
-              s = s.replace('defer engine.closeRuntimes(context.Background())', 'defer testCloseRuntimes(t, engine)')
-              s = s.replace('defer connection.Close()', 'defer testClose(t, connection)')
-              s = s.replace('defer occupied.Close()', 'defer testClose(t, occupied)')
-              s = s.replace('defer conn.Close()', 'defer testClose(t, conn)')
-              s = s.replace('defer mock.Close(context.Background())', 'defer testCloseRedisMock(t, mock)')
-              p.write_text(s)
-
-          p = Path('diagnostics_test.go')
-          s = p.read_text()
-          s = s.replace('requireDiagnostic(t, err, "CONFIG_DUPLICATE_KEY", "/kind", 3)', '_ = requireDiagnostic(t, err, "CONFIG_DUPLICATE_KEY", "/kind", 3)')
-          s = s.replace('requireDiagnostic(t, err, "CONFIG_TYPE_ERROR", "/defaults/host_port", 14)', '_ = requireDiagnostic(t, err, "CONFIG_TYPE_ERROR", "/defaults/host_port", 14)')
-          s = s.replace('defer listener.Close()', 'defer testClose(t, listener)')
-          s = s.replace('defer second.Close()', 'defer testClose(t, second)')
-          p.write_text(s)
-
-          p = Path('topology_test.go')
-          s = p.read_text()
-          s = s.replace('fmt.Fprintf(writer, "*%d\\r\\n", len(args))', 'if _, err := fmt.Fprintf(writer, "*%d\\r\\n", len(args)); err != nil {\n\t\tt.Fatal(err)\n\t}')
-          s = s.replace('fmt.Fprintf(writer, "$%d\\r\\n%s\\r\\n", len(arg), arg)', 'if _, err := fmt.Fprintf(writer, "$%d\\r\\n%s\\r\\n", len(arg), arg); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}')
-          p.write_text(s)
-
-          for name in ['service_redis.go', 'service_runtime.go']:
-              p = Path(name)
-              p.write_text(p.read_text().replace('defer connection.Close()', 'defer func() { _ = connection.Close() }()'))
-
-          p = Path('engine_core.go')
-          s = p.read_text()
-          s = s.replace('errors.New("Image is required")', 'errors.New("image is required")')
-          s = s.replace('fmt.Errorf("Conflict. The container name %q is already in use", name)', 'fmt.Errorf("conflict: the container name %q is already in use", name)')
-          s = s.replace('fmt.Errorf("No such container: %s", ref)', 'fmt.Errorf("no such container: %s", ref)')
-          s = s.replace('fmt.Errorf("You cannot remove a running container %s. Stop the container before attempting removal or force remove", container.ID)', 'fmt.Errorf("cannot remove running container %s: stop it first or force remove", container.ID)')
-          p.write_text(s)
-
-          p = Path('engine_resources.go')
-          p.write_text(p.read_text().replace('fmt.Errorf("No such exec instance: %s", id)', 'fmt.Errorf("no such exec instance: %s", id)'))
-
-          p = Path('main.go')
-          s = p.read_text()
-          s = s.replace('fmt.Errorf("Docker API server: %w", err)', 'fmt.Errorf("docker API server: %w", err)')
-          s = s.replace('fmt.Errorf("Docker socket %s is active; stop the existing docker-zero process or choose another --socket", path)', 'fmt.Errorf("docker socket %s is active; stop the existing docker-zero process or choose another --socket", path)')
-          s = s.replace('errors.New("Docker socket path is empty")', 'errors.New("docker socket path is empty")')
-          s = s.replace('fmt.Errorf("Docker socket path is too long for AF_UNIX: %d bytes (max %d): %s", len([]byte(path)), maxUnixSocketPathBytes, path)', 'fmt.Errorf("docker socket path is too long for AF_UNIX: %d bytes (max %d): %s", len([]byte(path)), maxUnixSocketPathBytes, path)')
-          s = s.replace('fmt.Fprintf(stdout,', '_, _ = fmt.Fprintf(stdout,')
-          s = s.replace('fmt.Fprintf(stderr,', '_, _ = fmt.Fprintf(stderr,')
-          s = s.replace('fmt.Fprintln(stderr, diagnostic.Render())', '_, _ = fmt.Fprintln(stderr, diagnostic.Render())')
-          p.write_text(s)
-
-          for name in ['redis_replication.go', 'service_redis.go']:
-              p = Path(name)
-              s = p.read_text()
-              s = re.sub(r'_, _ = writer\.WriteString\(fmt\.Sprintf\(([^\n]+)\)\)', r'_, _ = fmt.Fprintf(writer, \1)', s)
-              p.write_text(s)
-
-          p = Path('state.go')
-          s = p.read_text()
-          old = '''\t\texitCode := 0\n\t\tif c.Health.Status == "unhealthy" {\n\t\t\texitCode = 1\n\t\t\tc.Health.FailingStreak++\n\t\t} else if c.Health.Status == "healthy" {\n\t\t\tc.Health.FailingStreak = 0\n\t\t}\n'''
-          new = '''\t\texitCode := 0\n\t\tswitch c.Health.Status {\n\t\tcase "unhealthy":\n\t\t\texitCode = 1\n\t\t\tc.Health.FailingStreak++\n\t\tcase "healthy":\n\t\t\tc.Health.FailingStreak = 0\n\t\t}\n'''
-          if old in s:
-              s = s.replace(old, new)
-          p.write_text(s)
-
-          p = Path('docker_api_container_create.go')
-          p.write_text(p.read_text().replace('strings.Contains(err.Error(), "Conflict")', 'strings.Contains(strings.ToLower(err.Error()), "conflict")'))
-
-          p = Path('collision_test.go')
-          s = p.read_text()
-          if 'context.' not in s:
-              s = s.replace('\t"context"\n', '')
-          p.write_text(s)
-          PY
-          gofmt -w *.go
-      - name: Verify patched tree
-        run: |
-          go test ./...
-          go test -race ./...
-          go vet ./...
-          python3 -m py_compile scripts/*.py
-      - name: Exact pinned lint gate
+      - name: Format check
+        run: make fmt-check
+      - name: Unit tests
+        run: go test ./...
+      - name: Race detector
+        run: go test -race ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Python syntax
+        run: python3 -m py_compile scripts/*.py
+      - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           args: --timeout=5m
-      - name: Restore permanent CI and push verified fix
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f .github/workflows/review-autofix.yml
-          cat > .github/workflows/ci.yml <<'EOF'
-          name: CI
+      - name: govulncheck
+        uses: golang/govulncheck-action@v1.1.0
+        with:
+          go-version-file: go.mod
+          go-package: ./...
 
-          on:
-            push:
-              branches: [main]
-            pull_request:
-            workflow_dispatch:
+  integration:
+    name: Docker API integration
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Enable unprivileged low ports for strict virtual-endpoint tests
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+      - name: Core integration suite
+        run: make integration doctor matrix-harness-test
+      - name: Docker Compose topology suite
+        env:
+          COMPOSE_BIN: docker compose
+        run: make compose-topology
 
-          permissions:
-            contents: read
-
-          jobs:
-            test:
-              name: Test and lint
-              runs-on: ubuntu-latest
-              steps:
-                - uses: actions/checkout@v7
-                - uses: actions/setup-go@v7
-                  with:
-                    go-version-file: go.mod
-                    cache: true
-                - name: Enable unprivileged low ports for strict virtual-endpoint tests
-                  run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
-                - name: Format check
-                  run: make fmt-check
-                - name: Unit tests
-                  run: go test ./...
-                - name: Race detector
-                  run: go test -race ./...
-                - name: Vet
-                  run: go vet ./...
-                - name: Python syntax
-                  run: python3 -m py_compile scripts/*.py
-                - name: golangci-lint
-                  uses: golangci/golangci-lint-action@v9
-                  with:
-                    version: v2.12.2
-                    args: --timeout=5m
-                - name: govulncheck
-                  uses: golang/govulncheck-action@v1.1.0
-                  with:
-                    go-version-file: go.mod
-                    go-package: ./...
-
-            integration:
-              name: Docker API integration
-              runs-on: ubuntu-latest
-              needs: test
-              steps:
-                - uses: actions/checkout@v7
-                - uses: actions/setup-go@v7
-                  with:
-                    go-version-file: go.mod
-                    cache: true
-                - name: Enable unprivileged low ports for strict virtual-endpoint tests
-                  run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
-                - name: Core integration suite
-                  run: make integration doctor matrix-harness-test
-                - name: Docker Compose topology suite
-                  env:
-                    COMPOSE_BIN: docker compose
-                  run: make compose-topology
-
-            build:
-              name: Build release binaries
-              runs-on: ubuntu-latest
-              needs: test
-              steps:
-                - uses: actions/checkout@v7
-                - uses: actions/setup-go@v7
-                  with:
-                    go-version-file: go.mod
-                    cache: true
-                - name: Build Linux amd64 and arm64
-                  run: make checksums
-                - uses: actions/upload-artifact@v4
-                  with:
-                    name: docker-zero-${{ github.sha }}
-                    path: |
-                      dist/docker-zero-linux-amd64
-                      dist/docker-zero-linux-arm64
-                      dist/SHA256SUMS
-                    if-no-files-found: error
-          EOF
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "fix: resolve external review findings"
-          git push origin HEAD:fix/review-hardening
+  build:
+    name: Build release binaries
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build Linux amd64 and arm64
+        run: make checksums
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-zero-${{ github.sha }}
+          path: |
+            dist/docker-zero-linux-amd64
+            dist/docker-zero-linux-arm64
+            dist/SHA256SUMS
+          if-no-files-found: error
