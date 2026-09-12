@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify tag and VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          test "${GITHUB_REF_NAME}" = "v$(cat VERSION)" || {
+            echo "tag ${GITHUB_REF_NAME} does not match VERSION v$(cat VERSION)" >&2
+            exit 1
+          }
+      - name: Verify
+        run: make verify
+      - name: Compose compatibility
+        env:
+          COMPOSE_BIN: docker compose
+        run: make compose-topology
+      - name: Build
+        run: make checksums
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/docker-zero-linux-amd64 \
+            dist/docker-zero-linux-arm64 \
+            dist/SHA256SUMS \
+            --generate-notes \
+            --verify-tag

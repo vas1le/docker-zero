@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.go')
+if [[ -n "$files" ]]; then
+  unformatted=$(gofmt -l $files)
+  if [[ -n "$unformatted" ]]; then
+    echo "gofmt required:" >&2
+    echo "$unformatted" >&2
+    exit 1
+  fi
+fi
+
+go test ./...
+go vet ./...
+python3 -m py_compile scripts/*.py

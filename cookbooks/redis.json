@@ -1,0 +1,193 @@
+{
+  "kind": "redis",
+  "image_names": [
+    "redis",
+    "redis:alpine",
+    "redis:7-alpine"
+  ],
+  "defaults": {
+    "name": "redis-zero",
+    "image": "redis:7-alpine",
+    "service_type": "redis",
+    "ip_address": "127.20.0.3",
+    "container_port": 6379,
+    "host_port": 16379,
+    "host_ip": "127.0.0.1"
+  },
+  "seeds": {
+    "0": {
+      "description": "canonical healthy Redis",
+      "initial": {
+        "status": "running",
+        "running": true,
+        "restarting": false,
+        "health": "healthy",
+        "exit_code": 0,
+        "restart_count": 0
+      },
+      "transitions": [
+        {
+          "event": "docker.observe",
+          "when_status": "restarting",
+          "once": false,
+          "set": {
+            "status": "running",
+            "running": true,
+            "restarting": false,
+            "health": "healthy",
+            "exit_code": 0
+          }
+        }
+      ],
+      "redis": {
+        "PING": [
+          {
+            "from": 1,
+            "reply": "+PONG\r\n"
+          }
+        ]
+      }
+    },
+    "1": {
+      "description": "Redis answers LOADING twice, then becomes healthy",
+      "initial": {
+        "status": "running",
+        "running": true,
+        "restarting": false,
+        "health": "starting",
+        "exit_code": 0,
+        "restart_count": 0
+      },
+      "transitions": [
+        {
+          "event": "redis.PING",
+          "count": 3,
+          "when_health": "starting",
+          "once": true,
+          "set": {
+            "health": "healthy"
+          }
+        },
+        {
+          "event": "docker.observe",
+          "count": 3,
+          "when_health": "starting",
+          "once": true,
+          "set": {
+            "health": "healthy"
+          }
+        },
+        {
+          "event": "docker.observe",
+          "when_status": "restarting",
+          "once": false,
+          "set": {
+            "status": "running",
+            "running": true,
+            "restarting": false,
+            "health": "healthy",
+            "exit_code": 0
+          }
+        }
+      ],
+      "redis": {
+        "PING": [
+          {
+            "from": 1,
+            "when_health": "starting",
+            "reply": "-LOADING docker-zero is warming up\r\n"
+          },
+          {
+            "from": 1,
+            "when_health": "healthy",
+            "reply": "+PONG\r\n"
+          }
+        ]
+      }
+    },
+    "2": {
+      "description": "Redis drops the second PING and follows a crash/restart lifecycle",
+      "initial": {
+        "status": "running",
+        "running": true,
+        "restarting": false,
+        "health": "healthy",
+        "exit_code": 0,
+        "restart_count": 0
+      },
+      "transitions": [
+        {
+          "event": "redis.PING",
+          "count": 2,
+          "when_status": "running",
+          "once": true,
+          "set": {
+            "status": "exited",
+            "running": false,
+            "restarting": false,
+            "health": "unhealthy",
+            "exit_code": 137
+          }
+        },
+        {
+          "event": "docker.observe",
+          "when_status": "exited",
+          "once": false,
+          "set": {
+            "status": "restarting",
+            "running": true,
+            "restarting": true,
+            "health": "starting",
+            "restart_count_delta": 1
+          }
+        },
+        {
+          "event": "docker.observe",
+          "when_status": "restarting",
+          "once": false,
+          "set": {
+            "status": "running",
+            "running": true,
+            "restarting": false,
+            "health": "starting",
+            "exit_code": 0
+          }
+        },
+        {
+          "event": "docker.observe",
+          "when_status": "running",
+          "when_health": "starting",
+          "once": false,
+          "set": {
+            "health": "healthy"
+          }
+        }
+      ],
+      "redis": {
+        "PING": [
+          {
+            "from": 1,
+            "when_status": "running",
+            "reply": "+PONG\r\n"
+          },
+          {
+            "from": 2,
+            "when_status": "exited",
+            "close": true
+          },
+          {
+            "from": 2,
+            "when_status": "restarting",
+            "close": true
+          },
+          {
+            "from": 2,
+            "when_status": "running",
+            "when_health": "starting",
+            "reply": "-LOADING docker-zero is restarting\r\n"
+          }
+        ]
+      }
+    }
+  }
+}

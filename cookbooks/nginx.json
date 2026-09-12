@@ -1,0 +1,328 @@
+{
+  "kind": "nginx",
+  "image_names": [
+    "nginx",
+    "nginx:alpine",
+    "nginx:latest"
+  ],
+  "defaults": {
+    "name": "nginx-zero",
+    "image": "nginx:alpine",
+    "service_type": "http",
+    "ip_address": "127.20.0.2",
+    "container_port": 80,
+    "host_port": 18080,
+    "host_ip": "127.0.0.1"
+  },
+  "seeds": {
+    "0": {
+      "description": "canonical healthy nginx",
+      "initial": {
+        "status": "running",
+        "running": true,
+        "restarting": false,
+        "health": "healthy",
+        "exit_code": 0,
+        "restart_count": 0
+      },
+      "transitions": [
+        {
+          "event": "docker.observe",
+          "when_status": "restarting",
+          "once": false,
+          "set": {
+            "status": "running",
+            "running": true,
+            "restarting": false,
+            "health": "healthy",
+            "exit_code": 0
+          }
+        }
+      ],
+      "http": {
+        "GET /": [
+          {
+            "from": 1,
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<!doctype html><html><body><h1>Welcome to nginx!</h1><p>docker-zero seed 0</p></body></html>\n"
+          }
+        ],
+        "GET /health": [
+          {
+            "from": 1,
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"status\":\"healthy\",\"service\":\"nginx\",\"seed\":0}\n"
+          }
+        ],
+        "GET /nginx_status": [
+          {
+            "from": 1,
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/plain"
+            },
+            "body": "Active connections: 1\nserver accepts handled requests\n 1 1 1\nReading: 0 Writing: 1 Waiting: 0\n"
+          }
+        ],
+        "*": [
+          {
+            "from": 1,
+            "status": 404,
+            "headers": {
+              "Content-Type": "text/plain"
+            },
+            "body": "404 Not Found\n"
+          }
+        ]
+      }
+    },
+    "1": {
+      "description": "nginx starts unhealthy, fails two health checks, then recovers",
+      "initial": {
+        "status": "running",
+        "running": true,
+        "restarting": false,
+        "health": "starting",
+        "exit_code": 0,
+        "restart_count": 0
+      },
+      "transitions": [
+        {
+          "event": "http.GET /health",
+          "count": 3,
+          "when_health": "starting",
+          "once": true,
+          "set": {
+            "health": "healthy"
+          }
+        },
+        {
+          "event": "docker.observe",
+          "count": 3,
+          "when_health": "starting",
+          "once": true,
+          "set": {
+            "health": "healthy"
+          }
+        },
+        {
+          "event": "docker.observe",
+          "when_status": "restarting",
+          "once": false,
+          "set": {
+            "status": "running",
+            "running": true,
+            "restarting": false,
+            "health": "healthy",
+            "exit_code": 0
+          }
+        }
+      ],
+      "http": {
+        "GET /": [
+          {
+            "from": 1,
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<!doctype html><html><body><h1>Welcome to nginx!</h1><p>docker-zero seed 1</p></body></html>\n"
+          }
+        ],
+        "GET /health": [
+          {
+            "from": 1,
+            "when_health": "starting",
+            "status": 503,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"status\":\"starting\",\"service\":\"nginx\",\"seed\":1}\n"
+          },
+          {
+            "from": 1,
+            "when_health": "healthy",
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"status\":\"healthy\",\"service\":\"nginx\",\"seed\":1}\n"
+          }
+        ],
+        "GET /nginx_status": [
+          {
+            "from": 1,
+            "when_health": "starting",
+            "status": 503,
+            "headers": {
+              "Content-Type": "text/plain"
+            },
+            "body": "nginx is warming up\n"
+          },
+          {
+            "from": 1,
+            "when_health": "healthy",
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/plain"
+            },
+            "body": "Active connections: 1\nserver accepts handled requests\n 3 3 3\nReading: 0 Writing: 1 Waiting: 0\n"
+          }
+        ],
+        "*": [
+          {
+            "from": 1,
+            "status": 404,
+            "headers": {
+              "Content-Type": "text/plain"
+            },
+            "body": "404 Not Found\n"
+          }
+        ]
+      }
+    },
+    "2": {
+      "description": "nginx crashes on its second health request and follows a restart lifecycle",
+      "initial": {
+        "status": "running",
+        "running": true,
+        "restarting": false,
+        "health": "healthy",
+        "exit_code": 0,
+        "restart_count": 0
+      },
+      "transitions": [
+        {
+          "event": "http.GET /health",
+          "count": 2,
+          "when_status": "running",
+          "once": true,
+          "set": {
+            "status": "exited",
+            "running": false,
+            "restarting": false,
+            "health": "unhealthy",
+            "exit_code": 137
+          }
+        },
+        {
+          "event": "docker.observe",
+          "when_status": "exited",
+          "once": false,
+          "set": {
+            "status": "restarting",
+            "running": true,
+            "restarting": true,
+            "health": "starting",
+            "restart_count_delta": 1
+          }
+        },
+        {
+          "event": "docker.observe",
+          "when_status": "restarting",
+          "once": false,
+          "set": {
+            "status": "running",
+            "running": true,
+            "restarting": false,
+            "health": "starting",
+            "exit_code": 0
+          }
+        },
+        {
+          "event": "docker.observe",
+          "when_status": "running",
+          "when_health": "starting",
+          "once": false,
+          "set": {
+            "health": "healthy"
+          }
+        }
+      ],
+      "http": {
+        "GET /": [
+          {
+            "from": 1,
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/html"
+            },
+            "body": "<!doctype html><html><body><h1>Welcome to nginx!</h1><p>docker-zero seed 2</p></body></html>\n"
+          }
+        ],
+        "GET /health": [
+          {
+            "from": 1,
+            "when_status": "running",
+            "when_health": "healthy",
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"status\":\"healthy\",\"service\":\"nginx\",\"seed\":2}\n"
+          },
+          {
+            "from": 2,
+            "when_status": "exited",
+            "status": 503,
+            "close": true,
+            "body": ""
+          },
+          {
+            "from": 2,
+            "when_status": "restarting",
+            "status": 503,
+            "close": true,
+            "body": ""
+          },
+          {
+            "from": 2,
+            "when_status": "running",
+            "when_health": "starting",
+            "status": 503,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"status\":\"starting-after-restart\",\"service\":\"nginx\",\"seed\":2}\n"
+          },
+          {
+            "from": 3,
+            "when_status": "running",
+            "when_health": "healthy",
+            "status": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"status\":\"healthy-after-restart\",\"service\":\"nginx\",\"seed\":2}\n"
+          }
+        ],
+        "GET /nginx_status": [
+          {
+            "from": 1,
+            "status": 200,
+            "headers": {
+              "Content-Type": "text/plain"
+            },
+            "body": "Active connections: 1\nserver accepts handled requests\n 1 1 1\nReading: 0 Writing: 1 Waiting: 0\n"
+          }
+        ],
+        "*": [
+          {
+            "from": 1,
+            "status": 404,
+            "headers": {
+              "Content-Type": "text/plain"
+            },
+            "body": "404 Not Found\n"
+          }
+        ]
+      }
+    }
+  }
+}

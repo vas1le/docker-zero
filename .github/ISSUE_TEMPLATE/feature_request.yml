@@ -1,0 +1,24 @@
+name: Compatibility or feature request
+description: Request a Docker Engine endpoint, service behavior, or test capability.
+title: "feature: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case
+      description: Which client, orchestrator, or test needs this?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Required behavior
+      description: Docker API calls, state transitions, protocol behavior, or failure mode to model.
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference
+      description: Docker/Compose documentation, packet trace, API request sequence, or reproducer.

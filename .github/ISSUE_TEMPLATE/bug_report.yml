@@ -1,0 +1,45 @@
+name: Bug report
+description: Report incorrect Docker API, Compose, network, port, or service-emulator behavior.
+title: "bug: "
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is wrong?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: docker-zero version
+      placeholder: v0.4.1 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal commands, Docker API calls, Compose file, or cookbook scenario.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: ledger
+    attributes:
+      label: Relevant ledger or logs
+      description: Remove secrets before pasting.
+      render: text

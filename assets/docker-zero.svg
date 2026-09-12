@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">docker-zero icon</title>
+  <desc id="desc">A blue zero ring containing a small container cube and network nodes.</desc>
+  <rect width="512" height="512" rx="96" fill="#0b1220"/>
+  <rect x="126" y="92" width="260" height="328" rx="128" fill="none" stroke="#2496ed" stroke-width="44"/>
+  <path d="M205 189 256 160l51 29-51 29z" fill="#7cc7ff"/>
+  <path d="M205 189v58l51 30v-59z" fill="#2496ed"/>
+  <path d="M307 189v58l-51 30v-59z" fill="#0d6fb8"/>
+  <circle cx="206" cy="332" r="14" fill="#7cc7ff"/>
+  <circle cx="306" cy="332" r="14" fill="#7cc7ff"/>
+  <circle cx="256" cy="370" r="14" fill="#7cc7ff"/>
+  <path d="M218 338 244 360m50-22-26 22" stroke="#7cc7ff" stroke-width="10" stroke-linecap="round"/>
+</svg>
