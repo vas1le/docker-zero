@@ -16,9 +16,9 @@ func (e *Engine) createNetwork(name, driver string, labels map[string]string) (*
 		driver = "bridge"
 	}
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	for _, network := range e.networks {
 		if network.Name == name {
+			e.mu.Unlock()
 			return nil, fmt.Errorf("network with name %s already exists", name)
 		}
 	}
@@ -34,6 +34,7 @@ func (e *Engine) createNetwork(name, driver string, labels map[string]string) (*
 		}
 	}
 	if index == 0 {
+		e.mu.Unlock()
 		return nil, fmt.Errorf("docker-zero exhausted virtual network address space")
 	}
 	subnet := fmt.Sprintf("127.20.%d.0/24", index)
@@ -46,6 +47,7 @@ func (e *Engine) createNetwork(name, driver string, labels map[string]string) (*
 		Index: index, NextHost: 2,
 	}
 	e.networks[n.ID] = n
+	e.mu.Unlock()
 	e.ledger.Log(LedgerEntry{Channel: "docker", Event: "network.create", Request: map[string]any{"name": name, "driver": driver}, Response: map[string]any{"id": n.ID}})
 	return n, nil
 }
@@ -83,7 +85,6 @@ func (e *Engine) removeNetwork(ref string) error {
 		return &networkOperationError{kind: errPredefinedNetwork, message: "bridge is a pre-defined network and cannot be removed"}
 	}
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if len(n.Containers) != 0 {
 		attached := make([]string, 0, len(n.Containers))
 		for containerID := range n.Containers {
@@ -94,12 +95,14 @@ func (e *Engine) removeNetwork(ref string) error {
 			}
 		}
 		sort.Strings(attached)
+		e.mu.Unlock()
 		return &networkOperationError{
 			kind:    errNetworkHasEndpoints,
 			message: fmt.Sprintf("error while removing network: network %s id %s has active endpoints (%s)", n.Name, n.ID, strings.Join(attached, ", ")),
 		}
 	}
 	delete(e.networks, n.ID)
+	e.mu.Unlock()
 	e.ledger.Log(LedgerEntry{Channel: "docker", Event: "network.remove", Request: map[string]any{"id": n.ID, "name": n.Name}})
 	return nil
 }
@@ -112,8 +115,8 @@ func (e *Engine) createVolume(name, driver string, labels, options map[string]st
 		driver = "local"
 	}
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if volume, ok := e.volumes[name]; ok {
+		e.mu.Unlock()
 		return volume
 	}
 	v := &Volume{
@@ -122,6 +125,7 @@ func (e *Engine) createVolume(name, driver string, labels, options map[string]st
 		Options: cloneStringMap(options), Scope: "local",
 	}
 	e.volumes[name] = v
+	e.mu.Unlock()
 	e.ledger.Log(LedgerEntry{Channel: "docker", Event: "volume.create", Request: map[string]any{"name": name}, Response: v})
 	return v
 }
