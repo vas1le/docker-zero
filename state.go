@@ -506,6 +506,20 @@ func (c *Container) stop(exitCode int) (ContainerStateSnapshot, ContainerStateSn
 	return before, c.stateSnapshotLocked()
 }
 
+// kill atomically validates and transitions state so concurrent kills cannot
+// both report success. Only SIGKILL is modeled by the Docker API.
+func (c *Container) kill() (ContainerStateSnapshot, ContainerStateSnapshot, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	if !c.Running || c.Dead || c.removed {
+		return before, before, fmt.Errorf("container is not running")
+	}
+	c.manuallyStopped = true
+	c.applyPatchLocked(StatePatch{Status: stringPtr("exited"), ExitCode: intPtr(137)})
+	return before, c.stateSnapshotLocked(), nil
+}
+
 func (c *Container) pause() (ContainerStateSnapshot, ContainerStateSnapshot, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

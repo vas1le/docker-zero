@@ -195,6 +195,12 @@ The release workflow rejects a tag that does not match `VERSION`, then runs vali
 
 ## Current scope
 
+`kill` simulates SIGKILL only (the default, `9`, `KILL`, or `SIGKILL`). Other
+signals return an explicit unsupported error rather than silently killing the
+container. Killing a non-running container returns a conflict without changing
+its exit code.
+
+
 `docker-zero` is not a general-purpose container runtime and does not aim to implement every Docker feature.
 
 Not implemented as real kernel/runtime features:

@@ -98,12 +98,18 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.restart", advance, nil, nil)
 		w.WriteHeader(http.StatusNoContent)
 	case action == "kill" && r.Method == http.MethodPost:
-		before := container.stateSnapshot()
+		signal := r.URL.Query().Get("signal")
+		if signal != "" && signal != "9" && signal != "KILL" && signal != "SIGKILL" {
+			writeUnsupportedDockerError(w, http.StatusNotImplemented, "only SIGKILL (the default kill signal) is simulated")
+			return
+		}
+		before, after, killErr := container.kill()
+		if killErr != nil {
+			writeDockerError(w, http.StatusConflict, killErr.Error())
+			return
+		}
 		_ = api.engine.stopContainerRuntime(container)
-		container.stop(137)
-		advance := container.advance("docker.kill")
-		advance.Before = before
-		api.engine.logContainerEvent(container, "container.kill", advance, nil, nil)
+		api.engine.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.kill", Before: &before, After: &after})
 		w.WriteHeader(http.StatusNoContent)
 	case action == "wait" && r.Method == http.MethodPost:
 		api.handleContainerWait(w, r, container)
