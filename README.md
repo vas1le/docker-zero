@@ -44,7 +44,7 @@ The system under test can continue using `DOCKER_HOST` and the normal Docker API
 
 - Docker Engine API mock over a Unix socket.
 - Real Docker Compose client compatibility for the tested API surface.
-- Stateful container create, inspect, start, stop, restart, remove, and health behavior.
+- Stateful container create, inspect, start, stop, pause, unpause, restart, remove, and health behavior.
 - Images, networks, volumes, labels, and Compose resource discovery.
 - Per-container virtual IP allocation and network-scoped service aliases.
 - Fixed and ephemeral host-port publishing with real collision detection.
@@ -90,6 +90,8 @@ docker compose ps
 
 Compose itself is not reimplemented. The real Docker Compose client parses `compose.yaml` and calls the mock Docker Engine API.
 
+`--container-endpoints auto` is the default. In this mode docker-zero attempts direct virtual container-IP listeners where the host permits them and still provides published-port listeners. `--container-endpoints on` is strict: if a virtual endpoint cannot bind, startup fails. On Linux, strict emulation of container ports below 1024 requires the host to allow unprivileged low-port binding or the process to have the corresponding privilege/capability.
+
 ## Scenarios
 
 Cookbooks live under `cookbooks/` and define deterministic behavior for a service type.
@@ -124,11 +126,13 @@ Configuration check:
 ./dist/docker-zero-linux-amd64 --check --cookbook-dir ./cookbooks
 ```
 
-Core tests:
+Core tests and quality gates:
 
 ```bash
 make verify
 ```
+
+`make verify` includes formatting, pinned `golangci-lint`, unit tests, the race detector, `go vet`, Python syntax checks, Docker API integration, doctor checks, and the orchestration matrix harness.
 
 Compose compatibility:
 
@@ -151,7 +155,7 @@ The repository uses:
 - Go race detector;
 - Go fuzz tests;
 - `govulncheck`;
-- CodeQL when the repository is public;
+- CodeQL;
 - Dependabot for Go modules and GitHub Actions;
 - `pre-commit` hooks for contributor-side checks;
 - GitHub Actions for tests, Compose compatibility, cross-architecture builds, and releases.
@@ -170,8 +174,8 @@ The project uses semantic versioning.
 `VERSION` contains the source release version. Release tags use the same value with a `v` prefix:
 
 ```text
-VERSION: 0.4.1
-tag:     v0.4.1
+VERSION: 0.4.2
+tag:     v0.4.2
 ```
 
 The release workflow rejects a tag that does not match `VERSION`, then runs validation and builds static Linux `amd64` and `arm64` binaries with SHA-256 checksums.
@@ -187,9 +191,11 @@ Not implemented as real kernel/runtime features:
 - process execution inside containers;
 - a real Docker embedded DNS server at `127.0.0.11`;
 - Redis persistence or Redis wire-level replication;
+- Docker event streaming (`GET /events`);
+- Docker disk-usage accounting (`GET /system/df`);
 - arbitrary Engine endpoints not required by a tested client or compatibility case.
 
-When a Docker API operation is unsupported, the mock reports it explicitly and records the request in the ledger.
+When a Docker API operation is unsupported, the mock reports it explicitly with `X-Docker-Zero-Unsupported: true` and records the request in the ledger.
 
 ## Open source
 

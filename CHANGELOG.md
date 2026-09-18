@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.4.2 — 2026-09-12
+
+External-review hardening and quality-gate correction.
+
+- Made `golangci-lint` part of `make verify`, so local verification, CI, and tagged releases enforce the same lint gate.
+- Resolved the complete pinned `golangci-lint v2.12.2` issue set without disabling the configured linters.
+- Added explicit test cleanup helpers instead of ignoring close/shutdown errors in tests.
+- Preserved the last Docker health state and failing streak across a clean container stop.
+- Made container network reconfiguration transactional: allocation failure cannot partially detach or attach endpoints.
+- Fixed short container-ID MAC generation bounds.
+- Added an explicit AF_UNIX socket-path length diagnostic instead of leaking platform `bind: invalid argument` errors.
+- `/events` and `/system/df` now report machine-classified unsupported operations rather than returning fabricated success.
+- Added Docker pause/unpause behavior and rejects exec while a container is paused.
+- Removed confirmed dead code and split the engine implementation into focused source files.
+- Snapshot container-list metadata under the container lock to remove inconsistent concurrent reads.
+- Added regression tests for the externally reported behavior defects.
+- CI now verifies format, unit tests, race detector, vet, Python syntax, pinned golangci-lint, govulncheck, Docker API integration, real Docker Compose topology, cross-architecture builds, and CodeQL.
+
 ## v0.4.1 — 2026-09-03
 
 Collision and destructive-network semantics hardening.

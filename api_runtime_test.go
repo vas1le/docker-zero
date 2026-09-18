@@ -71,7 +71,7 @@ func TestUnsupportedDockerRequestIsMachineClassified(t *testing.T) {
 
 func TestDockerStartTransitionRunsAfterBaseStart(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	cookbook := engine.cookbooks["nginx"]
 	scenario := cookbook.Seeds["0"]
 	scenario.Transitions = append(scenario.Transitions, Transition{
@@ -107,7 +107,7 @@ func TestDockerStartTransitionRunsAfterBaseStart(t *testing.T) {
 
 func TestDockerRequestJSONRejectsTrailingDocument(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	api := &DockerAPI{engine: engine}
 	request := httptest.NewRequest(
 		http.MethodPost,
@@ -157,7 +157,7 @@ func TestInternalPanicIsReportedAndWrittenToLedger(t *testing.T) {
 
 func TestRedisShutdownClosesIdleClientsPromptly(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	mock := newRedisMock(engine, "127.0.0.1:0")
 	if err := mock.Start(); err != nil {
 		t.Fatal(err)
@@ -166,7 +166,7 @@ func TestRedisShutdownClosesIdleClientsPromptly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer connection.Close()
+	defer testClose(t, connection)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -181,7 +181,7 @@ func TestRedisShutdownClosesIdleClientsPromptly(t *testing.T) {
 
 func TestRedisShutdownCoversAcceptedButUnregisteredConnection(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	mock := newRedisMock(engine, "127.0.0.1:0")
 	accepted := make(chan struct{})
 	release := make(chan struct{})
@@ -198,7 +198,7 @@ func TestRedisShutdownCoversAcceptedButUnregisteredConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer connection.Close()
+	defer testClose(t, connection)
 	select {
 	case <-accepted:
 	case <-time.After(time.Second):
@@ -222,8 +222,8 @@ func TestRedisShutdownCoversAcceptedButUnregisteredConnection(t *testing.T) {
 
 func TestConcurrentNetworkInspectAndConnectIsRaceSafe(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
-	defer engine.closeRuntimes(context.Background())
+	defer testCloseLedger(t, ledger)
+	defer testCloseRuntimes(t, engine)
 	container, err := engine.createContainer("nginx-zero", "nginx:alpine", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -297,7 +297,7 @@ func TestWriteDockerStreamFrameUsesEightByteHeader(t *testing.T) {
 
 func TestRedisMalformedProtocolReturnsErrorWithoutEngineFailure(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	container, err := engine.createContainer("redis-zero", "redis:7-alpine", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -307,12 +307,12 @@ func TestRedisMalformedProtocolReturnsErrorWithoutEngineFailure(t *testing.T) {
 	if err := mock.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer mock.Close(context.Background())
+	defer testCloseRedisMock(t, mock)
 	connection, err := net.Dial("tcp", mock.listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer connection.Close()
+	defer testClose(t, connection)
 	if _, err := io.WriteString(connection, "*x\r\n"); err != nil {
 		t.Fatal(err)
 	}

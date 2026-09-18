@@ -63,6 +63,22 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		advance.Before = before
 		api.engine.logContainerEvent(container, "container.stop", advance, nil, map[string]any{"status": statusCode})
 		w.WriteHeader(statusCode)
+	case action == "pause" && r.Method == http.MethodPost:
+		before, after, pauseErr := container.pause()
+		if pauseErr != nil {
+			writeDockerError(w, http.StatusInternalServerError, pauseErr.Error())
+			return
+		}
+		api.engine.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.pause", Before: &before, After: &after})
+		w.WriteHeader(http.StatusNoContent)
+	case action == "unpause" && r.Method == http.MethodPost:
+		before, after, unpauseErr := container.unpause()
+		if unpauseErr != nil {
+			writeDockerError(w, http.StatusInternalServerError, unpauseErr.Error())
+			return
+		}
+		api.engine.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.unpause", Before: &before, After: &after})
+		w.WriteHeader(http.StatusNoContent)
 	case action == "restart" && r.Method == http.MethodPost:
 		before := container.stateSnapshot()
 		_ = api.engine.stopContainerRuntime(container)
@@ -107,6 +123,13 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.top", advance, nil, nil)
 		writeJSON(w, http.StatusOK, map[string]any{"Titles": []string{"UID", "PID", "PPID", "C", "STIME", "TTY", "TIME", "CMD"}, "Processes": [][]string{}})
 	case action == "exec" && r.Method == http.MethodPost:
+		container.mu.Lock()
+		paused := container.Paused
+		container.mu.Unlock()
+		if paused {
+			writeDockerError(w, http.StatusConflict, "container is paused, unpause the container before exec")
+			return
+		}
 		var request struct {
 			Cmd []string `json:"Cmd"`
 		}

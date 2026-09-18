@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -26,9 +25,9 @@ func dockerRequestForTest(api *DockerAPI, method, path, body string) *httptest.R
 
 func TestDeleteNetworkWithRunningContainerFailsWithoutMutatingTopology(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "on"
-	defer engine.closeRuntimes(context.Background())
+	defer testCloseRuntimes(t, engine)
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
 	createComposeContainerForTest(t, api, "project-nginx-1", "nginx:alpine", "nginx", "project_default", "", nil)
@@ -80,7 +79,7 @@ func TestDeleteNetworkWithRunningContainerFailsWithoutMutatingTopology(t *testin
 
 func TestDeleteNetworkWithStoppedAttachedContainerStillFails(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
@@ -106,7 +105,7 @@ func TestDeleteNetworkWithStoppedAttachedContainerStillFails(t *testing.T) {
 
 func TestPredefinedBridgeNetworkDeleteIsForbidden(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	api := &DockerAPI{engine: engine}
 	w := dockerRequestForTest(api, http.MethodDelete, "/v1.43/networks/bridge", "")
 	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "pre-defined") {
@@ -116,7 +115,7 @@ func TestPredefinedBridgeNetworkDeleteIsForbidden(t *testing.T) {
 
 func TestContainerNameCollisionReturns409AndPreservesOriginal(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
@@ -142,7 +141,7 @@ func TestContainerNameCollisionReturns409AndPreservesOriginal(t *testing.T) {
 
 func TestNetworkNameCollisionReturns409AndPreservesOriginal(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "collision_default", "project-a")
 	original, err := engine.findNetwork("collision_default")
@@ -165,9 +164,9 @@ func TestNetworkNameCollisionReturns409AndPreservesOriginal(t *testing.T) {
 
 func TestDuplicateNetworkConnectIsRejectedWithoutChangingEndpoint(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "on"
-	defer engine.closeRuntimes(context.Background())
+	defer testCloseRuntimes(t, engine)
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
 	createComposeContainerForTest(t, api, "project-nginx-1", "nginx:alpine", "nginx", "project_default", "", nil)
@@ -203,7 +202,7 @@ func TestDuplicateNetworkConnectIsRejectedWithoutChangingEndpoint(t *testing.T) 
 
 func TestNetworkDeleteCollisionDiagnosticIsDeterministic(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
@@ -227,7 +226,7 @@ func TestNetworkDeleteCollisionDiagnosticIsDeterministic(t *testing.T) {
 
 func TestCollisionMessagesRemainDockerShaped(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "collision_default", "project")
 	w := dockerRequestForTest(api, http.MethodPost, "/v1.43/networks/create", `{"Name":"collision_default","Driver":"bridge"}`)
