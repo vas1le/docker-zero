@@ -104,21 +104,27 @@ func (e *Engine) seedFor(kind, name string) int {
 }
 
 func (e *Engine) cookbookFor(name, image string) (*Cookbook, error) {
-	nameLower := strings.ToLower(name)
-	imageLower := strings.ToLower(image)
+	var selected *Cookbook
+	best := 0
+	ambiguous := false
 	for _, kind := range sortedCookbookKinds(e.cookbooks) {
 		cb := e.cookbooks[kind]
-		if strings.Contains(nameLower, strings.ToLower(cb.Kind)) {
-			return cb, nil
-		}
 		for _, candidate := range cb.ImageNames {
-			candidate = strings.ToLower(candidate)
-			if imageLower == candidate || strings.HasPrefix(imageLower, candidate+":") || strings.Contains(imageLower, candidate) {
-				return cb, nil
+			score := imageMatchScore(candidate, image)
+			if score > best {
+				selected, best, ambiguous = cb, score, false
+			} else if score > 0 && score == best && selected != cb {
+				ambiguous = true
 			}
 		}
 	}
-	return nil, fmt.Errorf("no cookbook matches name=%q image=%q", name, image)
+	if ambiguous {
+		return nil, fmt.Errorf("ambiguous cookbook image mapping for %q", image)
+	}
+	if selected != nil {
+		return selected, nil
+	}
+	return nil, fmt.Errorf("no cookbook matches image=%q (container name %q is not an image mapping)", image, name)
 }
 
 func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string, config ...*createContainerRequest) (*Container, error) {

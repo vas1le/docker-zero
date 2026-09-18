@@ -203,6 +203,15 @@ tag:     v0.4.2
 
 The release workflow rejects a tag that does not match `VERSION`, then runs validation and builds static Linux `amd64` and `arm64` binaries with SHA-256 checksums.
 
+## Image-to-service matching
+
+Cookbook `image_names` select services by image repository, never by container
+name or substring. For example, `redis` covers its tags and digests and the
+`docker.io/library/redis` alias, but not `myorg/redis` or `notredis`. Register
+private image repositories explicitly. A tagged/digest mapping takes precedence
+over a bare repository mapping; equally specific mappings to different cookbooks
+are rejected as ambiguous.
+
 ## Container configuration fidelity
 
 Create requests retain user, working directory, entrypoint, healthcheck, restart
