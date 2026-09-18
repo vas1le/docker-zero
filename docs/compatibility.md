@@ -87,3 +87,20 @@ For a deliberate fixture substitution, use label `docker-zero.cookbook=redis`
 or another registered kind. This explicitly selects the **fixture**, not real
 behavior of the supplied custom image. Image pulls remain metadata-only stream
 responses; they do not download, authenticate, or verify registry contents.
+
+## Crash recovery is not controller recovery
+
+A missing restart policy means `no`. After a fixture crash, `no` remains exited
+regardless of inspect/list polling, until a controller explicitly starts or
+restarts the container. Explicit `always`, `unless-stopped`, and `on-failure`
+policies can authorize the cookbook's automatic recovery edge. `on-failure`
+requires a nonzero exit code and respects its retry limit (zero is unlimited).
+A manual stop/kill suppresses automatic recovery until an explicit start/restart.
+A new manual start resets the automatic-attempt budget, not cumulative counts.
+
+Automatic recovery still follows **observation-driven cookbook transitions**:
+there is no Docker restart scheduler, backoff, uptime reset, or daemon-persistence
+model. Determinism means repeatability for a fixed request sequence, not arbitrary
+thread scheduling. With automatic restart enabled, seeing a healthy service does
+not prove the controller intervened; inspect the ledger for the required API
+start/restart/rollback actions. For controller recovery tests use policy `no`.
