@@ -66,29 +66,48 @@ cd docker-zero
 make build
 ```
 
-Start the healthy baseline:
+Start the healthy baseline in one terminal (no root privileges or real Docker
+daemon required):
 
 ```bash
 ./dist/docker-zero-linux-amd64 \
   --socket /tmp/docker-zero.sock \
   --seed 0 \
+  --container-endpoints off \
   --ledger-dir ./runs
 ```
 
-Point a Docker client or orchestrator at it:
+In another terminal, from this repository directory, use the real Docker CLI
+with its Compose plugin. The included `compose.yaml` starts the simulated Nginx
+and Redis models and binds their published ports to localhost only:
 
 ```bash
-export DOCKER_HOST=unix:///tmp/docker-zero.sock
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -f compose.yaml up -d
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -f compose.yaml ps
+curl http://127.0.0.1:18080/health
 ```
 
-For example:
+Clean up the demo before stopping the simulator with Ctrl+C:
 
 ```bash
-docker compose up -d
-docker compose ps
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -f compose.yaml down
 ```
 
-Compose itself is not reimplemented. The real Docker Compose client parses `compose.yaml` and calls the mock Docker Engine API.
+These process-scoped assignments do not redirect subsequent Docker commands in
+your shell. Set `DOCKER_ZERO_HTTP_PORT` / `DOCKER_ZERO_REDIS_PORT` for alternative
+published ports; pass those same values to each Compose command. To test without
+any Docker client, run `make doctor` instead.
+
+Compose itself is not reimplemented. The real client parses the included file
+and calls the simulated Engine API. This tests container-control logic and
+fixture protocols, **not the real image's application behavior**. The demo uses
+restart policy `no`, so a crashed service needs an explicit recovery action.
+
+See [configuration limits and strict mode](docs/configuration-contract.md),
+[exec fixtures](docs/exec-fixtures.md), [image mappings](docs/image-mappings.md),
+and [restart-policy semantics](docs/restart-policy.md). Custom healthcheck
+commands and arbitrary processes are not executed; unmodeled behavior is never
+silently counted as a successful strict matrix test.
 
 `--container-endpoints auto` is the default. In this mode docker-zero attempts direct virtual container-IP listeners where the host permits them and still provides published-port listeners. `--container-endpoints on` is strict: if a virtual endpoint cannot bind, startup fails. On Linux, strict emulation of container ports below 1024 requires the host to allow unprivileged low-port binding or the process to have the corresponding privilege/capability.
 
@@ -101,7 +120,7 @@ The shipped convention is:
 ```text
 seed 0 = healthy baseline
 seed 1 = transient failure / recovery
-seed 2 = crash / restart path
+seed 2 = crash / restart path (automatic recovery requires a restart policy)
 ```
 
 Run one global scenario:

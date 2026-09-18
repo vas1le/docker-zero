@@ -26,7 +26,9 @@ type HealthLog struct {
 }
 
 type Container struct {
-	mu sync.Mutex
+	mu      sync.Mutex
+	waiters map[*containerWaiter]struct{}
+	removed bool
 
 	ID       string
 	Name     string
@@ -37,6 +39,12 @@ type Container struct {
 	Created  time.Time
 	Started  time.Time
 	Finished time.Time
+
+	RequestedConfig     *containerConfigRecord
+	RestartPolicy       RestartPolicy
+	HealthcheckDisabled bool
+	manuallyStopped     bool
+	automaticRestarts   int
 
 	Spec     ServiceDefaults
 	Scenario Scenario
@@ -116,6 +124,7 @@ func newContainer(id, name, image string, cb *Cookbook, seed int) *Container {
 		Spec:               cb.Defaults,
 		Scenario:           scenario,
 		Status:             "created",
+		RestartPolicy:      RestartPolicy{Name: "no"},
 		Health:             HealthState{Status: ""},
 		NetworkMode:        "default",
 		PortBindings:       make(map[string][]PortBinding),
@@ -277,11 +286,24 @@ func (c *Container) advance(event string) eventAdvance {
 		if transition.WhenHealth != "" && transition.WhenHealth != c.Health.Status {
 			continue
 		}
-		c.applyPatchLocked(transition.Set)
+		patch := transition.Set
+		automaticRestart := !c.Running && patchStartsContainer(patch) && event != "docker.start" && event != "docker.restart"
+		if automaticRestart {
+			if !c.canRestartAutomaticallyLocked() {
+				continue
+			}
+			c.automaticRestarts++
+			patch.RestartCount = nil
+			patch.RestartCountDelta = 1
+		}
+		c.applyPatchLocked(patch)
 		if transition.Once {
 			c.AppliedTransitions[index] = true
 		}
 		transitionDescription = fmt.Sprintf("transition[%d]", index)
+		if automaticRestart {
+			transitionDescription += ":restart_policy"
+		}
 		// A single external event advances at most one lifecycle edge. This makes
 		// exited -> restarting -> running observable over separate inspections.
 		break
@@ -329,6 +351,9 @@ func (c *Container) applyPatchLocked(patch StatePatch) {
 	}
 	if patch.Health != nil {
 		c.Health.Status = *patch.Health
+	}
+	if c.HealthcheckDisabled {
+		c.Health = HealthState{}
 	}
 	if patch.ExitCode != nil {
 		c.ExitCode = *patch.ExitCode
@@ -395,6 +420,9 @@ func (c *Container) applyPatchLocked(patch StatePatch) {
 	if c.Status == "created" {
 		c.Pid = 0
 	}
+	if c.Status != oldStatus && (c.Status == "exited" || c.Status == "dead" || c.Status == "restarting") {
+		c.notifyWaitersLocked(false)
+	}
 	if c.Health.Status != oldHealth && c.Health.Status != "" {
 		exitCode := 0
 		switch c.Health.Status {
@@ -420,6 +448,8 @@ func (c *Container) start() (ContainerStateSnapshot, ContainerStateSnapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	before := c.stateSnapshotLocked()
+	c.manuallyStopped = false
+	c.automaticRestarts = 0
 	patch := c.startPatchLocked()
 	c.applyPatchLocked(patch)
 	c.StartCount++
@@ -467,12 +497,17 @@ func (c *Container) startPatchLocked() StatePatch {
 }
 
 func (c *Container) stop(exitCode int) (ContainerStateSnapshot, ContainerStateSnapshot) {
-	return c.applyPatch(StatePatch{
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	c.manuallyStopped = true
+	c.applyPatchLocked(StatePatch{
 		Status:     stringPtr("exited"),
 		Running:    boolPtr(false),
 		Restarting: boolPtr(false),
 		ExitCode:   intPtr(exitCode),
 	})
+	return before, c.stateSnapshotLocked()
 }
 
 func (c *Container) pause() (ContainerStateSnapshot, ContainerStateSnapshot, error) {

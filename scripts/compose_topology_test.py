@@ -229,6 +229,31 @@ class Suite:
         assert status == 200, (status, data)
         return list(json.loads(data)["answers"])
 
+    def test_readme_quickstart(self) -> None:
+        project = "readmequickstart"
+        path = Path(__file__).resolve().parents[1] / "compose.yaml"
+        # Use ephemeral published ports while testing the exact shipped file.
+        previous = self.env.copy()
+        self.env["DOCKER_ZERO_HTTP_PORT"] = "0"
+        self.env["DOCKER_ZERO_REDIS_PORT"] = "0"
+        try:
+            self.run_compose(project, path, "config", "--quiet")
+            self.run_compose(project, path, "up", "-d")
+            self.run_compose(project, path, "ps")
+            web = service_containers(self.socket, project, "web")
+            cache = service_containers(self.socket, project, "cache")
+            assert len(web) == len(cache) == 1, (web, cache)
+            web_port = published_port(inspect(self.socket, container_name(web[0])), 80)
+            cache_port = published_port(inspect(self.socket, container_name(cache[0])), 6379)
+            assert http_get(web_port, "/health")[0] == 200
+            assert redis_command(cache_port, "PING") == b"+PONG\r\n"
+            self.run_compose(project, path, "down")
+            assert not project_containers(self.socket, project)
+            print("PASS README quickstart: shipped Compose file, HTTP/Redis, cleanup")
+        finally:
+            self.down(project, path)
+            self.env = previous
+
     def test_scale_distinct_ips_and_dns(self) -> None:
         project = "toposcale"
         path = self.write_compose(project, """services:\n  nginx:\n    image: nginx:alpine\n""")
@@ -525,6 +550,7 @@ def main() -> None:
 
     suite = Suite(engine, compose)
     try:
+        suite.test_readme_quickstart()
         suite.test_scale_distinct_ips_and_dns()
         suite.test_ephemeral_ports_route_per_replica()
         suite.test_fixed_port_conflicts()

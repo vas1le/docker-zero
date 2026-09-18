@@ -20,6 +20,7 @@ from integration_test import (
     RunningEngine,
     assert_docker_identity,
     assert_ledgers,
+    create_and_start,
     docker_request,
     expect_http_drop,
     free_port,
@@ -122,7 +123,11 @@ def check_diagnostics(binary: str, project_root: Path, root: Path) -> None:
 
 
 def check_seed(binary: str, seed: int) -> None:
-    with RunningEngine(binary, seed=seed, bootstrap=True, container_endpoints="off") as engine:
+    with RunningEngine(binary, seed=seed, bootstrap=seed != 2, container_endpoints="off") as engine:
+        # Automatic recovery is explicitly requested, not implied by seed 2.
+        if seed == 2:
+            create_and_start(engine.socket_path, "nginx-zero", "nginx:alpine", engine.nginx_port, restart_policy="always")
+            create_and_start(engine.socket_path, "redis-zero", "redis:7-alpine", engine.redis_port, restart_policy="always")
         assert_docker_identity(engine)
         status, data, _ = docker_request(engine.socket_path, "GET", "/__docker_zero/state")
         assert status == 200, (status, data)

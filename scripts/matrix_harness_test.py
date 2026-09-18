@@ -78,6 +78,36 @@ def test_unsupported_classification(matrix: Path, engine: Path, temp: Path) -> N
     assert result["unsupported_docker_requests"] == ["GET /not-implemented"], result
 
 
+def test_metadata_only_classification(matrix: Path, engine: Path, temp: Path) -> None:
+    target = temp / "metadata_target.py"
+    write_executable(target, r'''        import http.client
+        import os
+        import socket
+
+        class UnixHTTP(http.client.HTTPConnection):
+            def connect(self):
+                self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.sock.connect(os.environ["DOCKER_HOST"].removeprefix("unix://"))
+
+        client = UnixHTTP("localhost", timeout=3)
+        client.request("POST", "/v1.43/containers/create?name=metadata",
+                       '{"Image":"nginx","User":"1000"}',
+                       {"Content-Type":"application/json"})
+        response = client.getresponse()
+        assert response.status == 201, response.read()
+        assert response.getheader("X-Docker-Zero-Unsupported") == "true"
+        response.read()
+        client.close()
+        # A zero target exit must not turn unmodeled semantics into a pass.
+        ''')
+    root = temp / "metadata-results"
+    completed = run_matrix(matrix, engine, [sys.executable, str(target)], root)
+    assert completed.returncode == 1, completed.stdout
+    result = load_only_result(root)
+    assert result["status"] == "mock_incomplete", (result, completed.stdout)
+    assert result["unsupported_docker_requests"] == ["POST /containers/create"], result
+
+
 def test_engine_death_and_log_flood(matrix: Path, temp: Path) -> None:
     fake_engine = temp / "fake_broken_engine.py"
     write_executable(
@@ -152,6 +182,8 @@ def main() -> int:
         temp = Path(directory)
         test_unsupported_classification(matrix, engine, temp)
         print("PASS matrix classifies unsupported Docker calls as mock_incomplete")
+        test_metadata_only_classification(matrix, engine, temp)
+        print("PASS matrix refuses a passing result for metadata-only create settings")
         test_engine_death_and_log_flood(matrix, temp)
         print("PASS matrix detects engine death and cannot deadlock on engine log output")
     return 0

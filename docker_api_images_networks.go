@@ -32,8 +32,13 @@ func (api *DockerAPI) handleImageList(w http.ResponseWriter) {
 
 func (api *DockerAPI) handleImageCreate(w http.ResponseWriter, r *http.Request) {
 	image := r.URL.Query().Get("fromImage")
-	if tag := r.URL.Query().Get("tag"); tag != "" && !strings.Contains(image, ":") {
+	_, suffix := splitImageReference(image)
+	if tag := r.URL.Query().Get("tag"); tag != "" && suffix == "" {
 		image += ":" + tag
+	}
+	if _, err := api.engine.cookbookFor("", image); err != nil {
+		writeUnsupportedDockerError(w, http.StatusNotImplemented, err.Error())
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -45,15 +50,9 @@ func (api *DockerAPI) handleImageCreate(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *DockerAPI) handleImageInspect(w http.ResponseWriter, name string) {
-	var cb *Cookbook
-	for _, candidate := range api.engine.cookbooks {
-		if candidate.Defaults.Image == name || strings.HasPrefix(name, candidate.Kind) || strings.Contains(name, candidate.Kind) {
-			cb = candidate
-			break
-		}
-	}
-	if cb == nil {
-		writeDockerError(w, http.StatusNotFound, "No such image: "+name)
+	cb, err := api.engine.cookbookFor("", name)
+	if err != nil {
+		writeUnsupportedDockerError(w, http.StatusNotImplemented, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

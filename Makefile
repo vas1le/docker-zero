@@ -4,7 +4,7 @@ BINARY := dist/docker-zero-linux-amd64
 ARM64_BINARY := dist/docker-zero-linux-arm64
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build build-arm64 build-all fmt fmt-check lint test test-repeat race race-repeat vet vuln pycheck integration integration-retest doctor matrix-smoke matrix-harness-test compose-topology fuzz-smoke verify retest checksums release hooks clean
+.PHONY: all build build-arm64 build-all fmt fmt-check lint test test-repeat race race-repeat vet vuln pycheck integration integration-retest doctor matrix-smoke matrix-harness-test compose-topology fuzz-smoke verify retest checksums release-check release hooks clean
 
 all: verify
 
@@ -74,6 +74,7 @@ matrix-harness-test: build
 	python3 scripts/matrix_harness_test.py $(BINARY)
 
 compose-topology: build
+	python3 scripts/docker_cli_contract_test.py $(BINARY) --docker "$${DOCKER_BIN:-docker}"
 	python3 scripts/compose_topology_test.py $(BINARY) --compose "$${COMPOSE_BIN:-docker-compose}"
 
 fuzz-smoke:
@@ -87,9 +88,12 @@ verify: fmt-check lint test race vet pycheck integration doctor matrix-smoke mat
 retest: verify test-repeat race-repeat integration-retest fuzz-smoke
 
 checksums: build-all
-	sha256sum $(BINARY) $(ARM64_BINARY) > dist/SHA256SUMS
+	cd dist && sha256sum $(notdir $(BINARY)) $(notdir $(ARM64_BINARY)) > SHA256SUMS
+	python3 scripts/release_checksums_test.py dist
 
-release: verify compose-topology checksums
+release-check: checksums
+
+release: verify compose-topology release-check
 
 hooks:
 	pre-commit install

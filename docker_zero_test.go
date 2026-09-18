@@ -87,6 +87,8 @@ func TestSeedTwoCrashAndRestartLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This test intentionally exercises the policy-driven fixture path.
+	container.RestartPolicy = RestartPolicy{Name: "always"}
 	container.start()
 	container.advance("http.GET /health")
 	crash := container.advance("http.GET /health")

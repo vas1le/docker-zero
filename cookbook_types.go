@@ -25,7 +25,17 @@ type ServiceDefaults struct {
 	HostPort      int    `json:"host_port"`
 }
 
+// ExecFixture matches the full argv exactly; it never executes a host process.
+// ExitCode is required so an omitted result cannot silently imply success.
+type ExecFixture struct {
+	Cmd      []string `json:"cmd"`
+	Stdout   string   `json:"stdout,omitempty"`
+	Stderr   string   `json:"stderr,omitempty"`
+	ExitCode *int     `json:"exit_code"`
+}
+
 type Scenario struct {
+	Exec        []ExecFixture              `json:"exec,omitempty"`
 	Description string                     `json:"description"`
 	Initial     StatePatch                 `json:"initial"`
 	Transitions []Transition               `json:"transitions,omitempty"`

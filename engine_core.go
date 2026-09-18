@@ -46,7 +46,9 @@ type ExecInstance struct {
 	Command     []string
 	Running     bool
 	ExitCode    int
-	Output      string
+	Started     bool
+	Request     execCreateRequest
+	Fixture     ExecFixture
 }
 
 type Engine struct {
@@ -66,6 +68,7 @@ type Engine struct {
 	execs        map[string]*ExecInstance
 	runtimes     map[string]*ContainerRuntime
 	endpointMode string
+	strict       bool
 
 	runtimeGate    sync.RWMutex
 	runtimeClosing bool
@@ -114,25 +117,11 @@ func (e *Engine) seedFor(kind, name string) int {
 	return e.seed
 }
 
-func (e *Engine) cookbookFor(name, image string) (*Cookbook, error) {
-	nameLower := strings.ToLower(name)
-	imageLower := strings.ToLower(image)
-	for _, kind := range sortedCookbookKinds(e.cookbooks) {
-		cb := e.cookbooks[kind]
-		if strings.Contains(nameLower, strings.ToLower(cb.Kind)) {
-			return cb, nil
-		}
-		for _, candidate := range cb.ImageNames {
-			candidate = strings.ToLower(candidate)
-			if imageLower == candidate || strings.HasPrefix(imageLower, candidate+":") || strings.Contains(imageLower, candidate) {
-				return cb, nil
-			}
-		}
-	}
-	return nil, fmt.Errorf("no cookbook matches name=%q image=%q", name, image)
+func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string) (*Container, error) {
+	return e.createContainerWithConfig(name, image, labels, env, command, nil)
 }
 
-func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string) (*Container, error) {
+func (e *Engine) createContainerWithConfig(name, image string, labels map[string]string, env, command []string, config *containerConfigRecord) (*Container, error) {
 	name = strings.TrimPrefix(strings.TrimSpace(name), "/")
 	if name == "" {
 		name = fmt.Sprintf("docker-zero-%d", e.counter.Add(1))
@@ -162,6 +151,11 @@ func (e *Engine) createContainer(name, image string, labels map[string]string, e
 	container.Labels = cloneStringMap(labels)
 	container.Env = append([]string(nil), env...)
 	container.Command = append([]string(nil), command...)
+	container.RequestedConfig = config
+	if config != nil {
+		container.RestartPolicy = config.RestartPolicy
+		container.HealthcheckDisabled = config.HealthcheckDisabled
+	}
 	e.containers[id] = container
 	e.names[name] = id
 	e.mu.Unlock()
@@ -271,6 +265,7 @@ func (e *Engine) removeContainer(ref string, force bool) error {
 	}
 	e.mu.Unlock()
 	before := container.stateSnapshot()
+	container.markRemoved()
 	e.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.remove", Before: &before})
 	return nil
 }

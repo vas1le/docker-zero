@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -8,15 +9,22 @@ import (
 )
 
 type createContainerRequest struct {
-	Hostname     string            `json:"Hostname"`
-	Image        string            `json:"Image"`
-	Cmd          []string          `json:"Cmd"`
-	Env          []string          `json:"Env"`
-	Labels       map[string]string `json:"Labels"`
-	ExposedPorts map[string]any    `json:"ExposedPorts"`
+	AttachStdout bool                  `json:"AttachStdout"`
+	AttachStderr bool                  `json:"AttachStderr"`
+	Hostname     string                `json:"Hostname"`
+	User         string                `json:"User"`
+	WorkingDir   string                `json:"WorkingDir"`
+	Entrypoint   []string              `json:"Entrypoint"`
+	Healthcheck  *containerHealthcheck `json:"Healthcheck"`
+	Image        string                `json:"Image"`
+	Cmd          []string              `json:"Cmd"`
+	Env          []string              `json:"Env"`
+	Labels       map[string]string     `json:"Labels"`
+	ExposedPorts map[string]any        `json:"ExposedPorts"`
 	HostConfig   struct {
-		NetworkMode  string `json:"NetworkMode"`
-		PortBindings map[string][]struct {
+		RestartPolicy RestartPolicy `json:"RestartPolicy"`
+		NetworkMode   string        `json:"NetworkMode"`
+		PortBindings  map[string][]struct {
 			HostIP   string `json:"HostIp"`
 			HostPort string `json:"HostPort"`
 		} `json:"PortBindings"`
@@ -64,13 +72,18 @@ func configureContainerPortBindings(container *Container, input map[string][]str
 }
 
 func (api *DockerAPI) handleContainerCreate(w http.ResponseWriter, r *http.Request) {
-	var request createContainerRequest
-	if err := decodeJSON(r.Body, &request); err != nil {
+	request, config, err := readContainerConfig(r.Body)
+	if err != nil {
 		writeDockerError(w, http.StatusBadRequest, "invalid container config: "+err.Error())
 		return
 	}
+	api.engine.classifyModeledCommand(request, config)
+	if api.engine.strict && len(config.MetadataOnly) > 0 {
+		writeUnsupportedDockerError(w, http.StatusNotImplemented, "configuration is stored but not behaviorally simulated: "+strings.Join(config.MetadataOnly, ", "))
+		return
+	}
 	name := r.URL.Query().Get("name")
-	container, err := api.engine.createContainer(name, request.Image, request.Labels, request.Env, request.Cmd)
+	container, err := api.engine.createContainerWithConfig(name, request.Image, request.Labels, request.Env, request.Cmd, config)
 	if err == nil {
 		if bindingErr := configureContainerPortBindings(container, request.HostConfig.PortBindings); bindingErr != nil {
 			_ = api.engine.removeContainer(container.ID, true)
@@ -88,6 +101,10 @@ func (api *DockerAPI) handleContainerCreate(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if err != nil {
+		if errors.Is(err, errImageMapping) {
+			writeUnsupportedDockerError(w, http.StatusNotImplemented, err.Error())
+			return
+		}
 		status := http.StatusBadRequest
 		if strings.Contains(strings.ToLower(err.Error()), "conflict") {
 			status = http.StatusConflict
@@ -95,7 +112,11 @@ func (api *DockerAPI) handleContainerCreate(w http.ResponseWriter, r *http.Reque
 		writeDockerError(w, status, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"Id": container.ID, "Warnings": []string{}})
+	warnings := config.warnings()
+	if len(warnings) > 0 {
+		w.Header().Set("X-Docker-Zero-Unsupported", "true")
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"Id": container.ID, "Warnings": warnings})
 }
 
 func (api *DockerAPI) handleContainerList(w http.ResponseWriter, r *http.Request) {
