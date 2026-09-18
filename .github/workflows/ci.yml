@@ -19,6 +19,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Enable unprivileged low ports for strict virtual-endpoint tests
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
       - name: Format check
         run: make fmt-check
       - name: Unit tests
@@ -50,6 +52,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Enable unprivileged low ports for strict virtual-endpoint tests
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
       - name: Core integration suite
         run: make integration doctor matrix-harness-test
       - name: Docker Compose topology suite

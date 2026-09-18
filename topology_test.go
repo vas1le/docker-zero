@@ -76,7 +76,7 @@ func testContainerIP(doc map[string]any, network string) string {
 
 func TestComposeReplicasGetDistinctIPsAndNetworkScopedDNS(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
@@ -116,9 +116,9 @@ func TestComposeReplicasGetDistinctIPsAndNetworkScopedDNS(t *testing.T) {
 
 func TestEphemeralPublishedPortsAreDistinctAndRouteToReplica(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "on"
-	defer engine.closeRuntimes(context.Background())
+	defer testCloseRuntimes(t, engine)
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
 	binding := `{"80/tcp":[{"HostIp":"127.0.0.1","HostPort":""}]}`
@@ -158,11 +158,11 @@ func TestFixedPublishedPortConflictFailsContainerStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer occupied.Close()
+	defer testClose(t, occupied)
 	port := occupied.Addr().(*net.TCPAddr).Port
 
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
@@ -176,9 +176,9 @@ func TestFixedPublishedPortConflictFailsContainerStart(t *testing.T) {
 
 func TestRedisReplicationUsesNetworkDNSAndIndependentReplicaState(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "on"
-	defer engine.closeRuntimes(context.Background())
+	defer testCloseRuntimes(t, engine)
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
 
@@ -228,11 +228,15 @@ func redisRoundTripForTest(t *testing.T, ip string, args ...string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer testClose(t, conn)
 	writer := bufio.NewWriter(conn)
-	fmt.Fprintf(writer, "*%d\r\n", len(args))
+	if _, err := fmt.Fprintf(writer, "*%d\r\n", len(args)); err != nil {
+		t.Fatal(err)
+	}
 	for _, arg := range args {
-		fmt.Fprintf(writer, "$%d\r\n%s\r\n", len(arg), arg)
+		if _, err := fmt.Fprintf(writer, "$%d\r\n%s\r\n", len(arg), arg); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := writer.Flush(); err != nil {
 		t.Fatal(err)
@@ -263,7 +267,7 @@ func redisRoundTripForTest(t *testing.T, ip string, args ...string) string {
 
 func TestDockerNetworkConnectDisconnectUpdatesScopedDNS(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_left", "project")
@@ -300,7 +304,7 @@ func TestDockerNetworkConnectDisconnectUpdatesScopedDNS(t *testing.T) {
 
 func TestVirtualNetworkAndContainerAddressesAreReusableAfterChurn(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
 	api := &DockerAPI{engine: engine}
 
@@ -342,10 +346,10 @@ func TestSameContainerPublishedPortConflictFailsAndRollsBackPartialEphemeralBind
 		t.Fatal(err)
 	}
 	port := occupied.Addr().(*net.TCPAddr).Port
-	defer occupied.Close()
+	defer testClose(t, occupied)
 
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
@@ -379,7 +383,7 @@ func TestSameContainerCannotBindOneHostPortToDifferentContainerPorts(t *testing.
 	_ = probe.Close()
 
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
@@ -400,7 +404,7 @@ func TestSameContainerCannotBindOneHostPortToDifferentContainerPorts(t *testing.
 
 func TestEngineShutdownPreventsBackgroundRuntimeRebind(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "on"
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
@@ -427,9 +431,9 @@ func TestEngineShutdownPreventsBackgroundRuntimeRebind(t *testing.T) {
 
 func TestRedisContainerStopClosesEstablishedClientConnections(t *testing.T) {
 	engine, ledger := testEngine(t, 0)
-	defer ledger.Close()
+	defer testCloseLedger(t, ledger)
 	engine.endpointMode = "off"
-	defer engine.closeRuntimes(context.Background())
+	defer testCloseRuntimes(t, engine)
 	api := &DockerAPI{engine: engine}
 	createComposeNetworkForTest(t, api, "project_default", "project")
 	binding := `{"6379/tcp":[{"HostIp":"127.0.0.1","HostPort":""}]}`
@@ -444,7 +448,7 @@ func TestRedisContainerStopClosesEstablishedClientConnections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer connection.Close()
+	defer testClose(t, connection)
 	reader := bufio.NewReader(connection)
 	if _, err := io.WriteString(connection, "*1\r\n$4\r\nPING\r\n"); err != nil {
 		t.Fatal(err)

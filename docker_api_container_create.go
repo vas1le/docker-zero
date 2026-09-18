@@ -89,7 +89,7 @@ func (api *DockerAPI) handleContainerCreate(w http.ResponseWriter, r *http.Reque
 	}
 	if err != nil {
 		status := http.StatusBadRequest
-		if strings.Contains(err.Error(), "Conflict") {
+		if strings.Contains(strings.ToLower(err.Error()), "conflict") {
 			status = http.StatusConflict
 		}
 		writeDockerError(w, status, err.Error())
