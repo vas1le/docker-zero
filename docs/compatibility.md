@@ -46,3 +46,30 @@ Container archive PUT, GET, and HEAD return HTTP 501 with the unsupported
 marker. No upload is accepted, no filesystem mutation is implied, and these
 requests do not advance scenario state. A successful Docker copy requires a
 real Engine or a future explicitly implemented filesystem model.
+
+## Requested configuration versus simulated behavior
+
+Container creation retains the supplied configuration in `Config` and
+`HostConfig` on inspection, including user, entrypoint, working directory,
+healthcheck and resource settings. Restart policy defaults to `no`; explicit
+policies and retry limits are retained. `ExposedPorts` includes image/model
+defaults and requested declarations. Port bindings and network endpoints reflect
+the simulator's allocated resources, not the originally requested allocation.
+
+Retention does **not** execute a custom entrypoint or health command, enforce
+memory/security limits, or create a filesystem. Custom settings that are only
+metadata are named in create `Warnings`, the `X-Docker-Zero-Metadata-Only`
+response header, and inspect's `DockerZero.MetadataOnlyFields`. Some service
+fixtures interpret command/environment options, but general process execution
+is not implemented. Requested advanced networking settings are retained under
+`DockerZero.RequestedNetworkingConfig`, not falsely reported as allocated IPs.
+
+Use `--strict` to reject metadata-only create settings with the unsupported
+marker **before** allocating a container. This flag checks the create request's
+configuration; it is not a claim of full Docker conformance. Exec and archive
+operations fail closed regardless of this flag. Empty/default SDK fields are
+not rejected merely for being present. `Healthcheck.Test: ["NONE"]` disables
+reported health; other custom checks are stored, never executed. Service health
+otherwise comes from the cookbook, including its synthetic default healthcheck.
+
+`GET /__docker_zero/capabilities` describes these boundaries and the strict flag.

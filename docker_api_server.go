@@ -78,6 +78,10 @@ func (api *DockerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Ostype", "linux")
 	w.Header().Set("X-Docker-Zero-Version", version)
 
+	if path == "/__docker_zero/capabilities" && r.Method == http.MethodGet {
+		writeJSON(w, http.StatusOK, api.engine.capabilities())
+		return
+	}
 	if path == "/_ping" {
 		api.handlePing(w, r)
 		return

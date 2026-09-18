@@ -71,6 +71,7 @@ type Engine struct {
 	execs        map[string]*ExecInstance
 	runtimes     map[string]*ContainerRuntime
 	endpointMode string
+	strictConfig bool
 
 	runtimeGate    sync.RWMutex
 	runtimeClosing bool

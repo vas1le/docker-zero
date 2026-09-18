@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -44,21 +45,27 @@ type Container struct {
 	Spec     ServiceDefaults
 	Scenario Scenario
 
-	Status       string
-	Running      bool
-	Paused       bool
-	Restarting   bool
-	OOMKilled    bool
-	Dead         bool
-	Pid          int
-	ExitCode     int
-	Error        string
-	RestartCount int
-	Health       HealthState
-	NetworkMode  string
-	PrimaryIP    string
-	PortBindings map[string][]PortBinding
-	Redis        RedisReplicationState
+	Status              string
+	Running             bool
+	Paused              bool
+	Restarting          bool
+	OOMKilled           bool
+	Dead                bool
+	Pid                 int
+	ExitCode            int
+	Error               string
+	RestartCount        int
+	Health              HealthState
+	NetworkMode         string
+	PrimaryIP           string
+	PortBindings        map[string][]PortBinding
+	RequestedConfig     map[string]json.RawMessage
+	RequestedHostConfig map[string]json.RawMessage
+	RequestedNetworking json.RawMessage
+	MetadataOnlyFields  []string
+	RestartPolicy       restartPolicy
+	HealthcheckDisabled bool
+	Redis               RedisReplicationState
 
 	Counters           map[string]int
 	AppliedTransitions map[int]bool
@@ -119,6 +126,7 @@ func newContainer(id, name, image string, cb *Cookbook, seed int) *Container {
 		Spec:               cb.Defaults,
 		Scenario:           scenario,
 		Status:             "created",
+		RestartPolicy:      restartPolicy{Name: "no"},
 		Health:             HealthState{Status: ""},
 		NetworkMode:        "default",
 		PortBindings:       make(map[string][]PortBinding),
