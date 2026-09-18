@@ -271,6 +271,7 @@ func (e *Engine) removeContainer(ref string, force bool) error {
 	}
 	e.mu.Unlock()
 	before := container.stateSnapshot()
+	container.markRemoved()
 	e.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.remove", Before: &before})
 	return nil
 }
