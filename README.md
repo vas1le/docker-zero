@@ -195,6 +195,12 @@ The release workflow rejects a tag that does not match `VERSION`, then runs vali
 
 ## Current scope
 
+Versioned requests must be within the advertised API range (`1.24`–`1.43`).
+Out-of-range or malformed numeric versions are rejected before any operation.
+Unversioned `/_ping` and `/version` remain available for client negotiation.
+This range describes accepted request versions, not complete implementation of
+every feature in those Docker API versions.
+
 `kill` simulates SIGKILL only (the default, `9`, `KILL`, or `SIGKILL`). Other
 signals return an explicit unsupported error rather than silently killing the
 container. Killing a non-running container returns a conflict without changing
