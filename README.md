@@ -95,6 +95,10 @@ Compose itself is not reimplemented. The real Docker Compose client parses `comp
 ## Scenarios
 
 Cookbooks live under `cookbooks/` and define deterministic behavior for a service type.
+Their `image_names` entries match exact image repositories (all tags/digests) or
+explicit tag/digest references. Container names never select a service model.
+Private or custom image names require an explicit `image_names` entry; substring
+matches such as `company/not-nginx` are deliberately rejected.
 
 The shipped convention is:
 
