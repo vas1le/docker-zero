@@ -68,6 +68,7 @@ type Engine struct {
 	execs        map[string]*ExecInstance
 	runtimes     map[string]*ContainerRuntime
 	endpointMode string
+	strict       bool
 
 	runtimeGate    sync.RWMutex
 	runtimeClosing bool
@@ -117,6 +118,10 @@ func (e *Engine) seedFor(kind, name string) int {
 }
 
 func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string) (*Container, error) {
+	return e.createContainerWithConfig(name, image, labels, env, command, nil)
+}
+
+func (e *Engine) createContainerWithConfig(name, image string, labels map[string]string, env, command []string, config *containerConfigRecord) (*Container, error) {
 	name = strings.TrimPrefix(strings.TrimSpace(name), "/")
 	if name == "" {
 		name = fmt.Sprintf("docker-zero-%d", e.counter.Add(1))
@@ -146,6 +151,11 @@ func (e *Engine) createContainer(name, image string, labels map[string]string, e
 	container.Labels = cloneStringMap(labels)
 	container.Env = append([]string(nil), env...)
 	container.Command = append([]string(nil), command...)
+	container.RequestedConfig = config
+	if config != nil {
+		container.RestartPolicy = config.RestartPolicy
+		container.HealthcheckDisabled = config.HealthcheckDisabled
+	}
 	e.containers[id] = container
 	e.names[name] = id
 	e.mu.Unlock()

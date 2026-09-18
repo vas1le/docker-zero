@@ -40,6 +40,10 @@ type Container struct {
 	Started  time.Time
 	Finished time.Time
 
+	RequestedConfig     *containerConfigRecord
+	RestartPolicy       RestartPolicy
+	HealthcheckDisabled bool
+
 	Spec     ServiceDefaults
 	Scenario Scenario
 
@@ -118,6 +122,7 @@ func newContainer(id, name, image string, cb *Cookbook, seed int) *Container {
 		Spec:               cb.Defaults,
 		Scenario:           scenario,
 		Status:             "created",
+		RestartPolicy:      RestartPolicy{Name: "no"},
 		Health:             HealthState{Status: ""},
 		NetworkMode:        "default",
 		PortBindings:       make(map[string][]PortBinding),
@@ -331,6 +336,9 @@ func (c *Container) applyPatchLocked(patch StatePatch) {
 	}
 	if patch.Health != nil {
 		c.Health.Status = *patch.Health
+	}
+	if c.HealthcheckDisabled {
+		c.Health = HealthState{}
 	}
 	if patch.ExitCode != nil {
 		c.ExitCode = *patch.ExitCode

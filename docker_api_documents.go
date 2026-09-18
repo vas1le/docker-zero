@@ -103,17 +103,18 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 		"StartedAt": formatDockerTime(c.Started), "FinishedAt": formatDockerTime(c.Finished),
 	}
 	if c.Health.Status != "" {
-		state["Health"] = map[string]any{"Status": c.Health.Status, "FailingStreak": c.Health.FailingStreak, "Log": c.Health.Log}
+		state["Health"] = map[string]any{"Status": c.Health.Status, "FailingStreak": c.Health.FailingStreak, "Log": append([]HealthLog(nil), c.Health.Log...)}
 	}
 	id, created, imageID, name, restartCount, networkMode := c.ID, c.Created, c.ImageID, c.Name, c.RestartCount, c.NetworkMode
 	image, env, command := c.Image, append([]string(nil), c.Env...), append([]string(nil), c.Command...)
 	labels := cloneStringMap(c.Labels)
 	primaryIP := c.PrimaryIP
 	containerPort := c.Spec.ContainerPort
+	requestedConfig, restartPolicy := c.RequestedConfig, c.RestartPolicy
 	c.mu.Unlock()
 
 	hostPortBindings, networkPorts, exposed := dockerPortBindingDocuments(c)
-	return map[string]any{
+	doc := map[string]any{
 		"Id": id, "Created": formatDockerTime(created), "Path": firstOrEmpty(command), "Args": restOrEmpty(command), "State": state,
 		"Image": imageID, "ResolvConfPath": "/var/lib/docker-zero/containers/" + id + "/resolv.conf",
 		"HostnamePath": "/var/lib/docker-zero/containers/" + id + "/hostname", "HostsPath": "/var/lib/docker-zero/containers/" + id + "/hosts",
@@ -122,7 +123,7 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 		"HostConfig": map[string]any{
 			"Binds": nil, "ContainerIDFile": "", "LogConfig": map[string]any{"Type": "json-file", "Config": map[string]string{}},
 			"NetworkMode": networkMode, "PortBindings": hostPortBindings,
-			"RestartPolicy": map[string]any{"Name": "unless-stopped", "MaximumRetryCount": 0}, "AutoRemove": false,
+			"RestartPolicy": restartPolicy, "AutoRemove": false,
 			"VolumeDriver": "", "VolumesFrom": nil, "ConsoleSize": []int{0, 0}, "CapAdd": nil, "CapDrop": nil,
 			"CgroupnsMode": "private", "Dns": []string{"127.0.0.11"}, "DnsOptions": nil, "DnsSearch": nil, "ExtraHosts": nil, "GroupAdd": nil,
 			"IpcMode": "private", "Cgroup": "", "Links": nil, "OomScoreAdj": 0, "PidMode": "", "Privileged": false,
@@ -143,6 +144,10 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 		},
 		"DockerZero": map[string]any{"ContainerPort": containerPort},
 	}
+	if requestedConfig != nil {
+		requestedConfig.overlayInspect(doc)
+	}
+	return doc
 }
 
 func networkEndpointFor(c *Container, network *Network, endpoint map[string]any) map[string]any {
