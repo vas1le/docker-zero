@@ -46,7 +46,9 @@ type ExecInstance struct {
 	Command     []string
 	Running     bool
 	ExitCode    int
-	Output      string
+	Started     bool
+	Request     execCreateRequest
+	Fixture     ExecFixture
 }
 
 type Engine struct {

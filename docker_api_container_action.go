@@ -134,15 +134,7 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 			writeDockerError(w, http.StatusConflict, err.Error())
 			return
 		}
-		var request struct {
-			Cmd []string `json:"Cmd"`
-		}
-		if err := decodeJSON(r.Body, &request); err != nil {
-			writeDockerError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		exec := api.engine.createExec(container, request.Cmd)
-		writeJSON(w, http.StatusCreated, map[string]any{"Id": exec.ID})
+		api.handleExecCreate(w, r, container)
 	case action == "archive" && (r.Method == http.MethodPut || r.Method == http.MethodHead):
 		advance := container.advance("docker.archive")
 		_, _ = io.Copy(io.Discard, r.Body)

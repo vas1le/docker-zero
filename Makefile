@@ -74,6 +74,7 @@ matrix-harness-test: build
 	python3 scripts/matrix_harness_test.py $(BINARY)
 
 compose-topology: build
+	python3 scripts/docker_cli_contract_test.py $(BINARY) --docker "$${DOCKER_BIN:-docker}"
 	python3 scripts/compose_topology_test.py $(BINARY) --compose "$${COMPOSE_BIN:-docker-compose}"
 
 fuzz-smoke:
