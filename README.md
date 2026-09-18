@@ -4,7 +4,7 @@
 
 # docker-zero
 
-**Mock Docker Engine for deterministic Docker API, Docker Compose, container orchestration, network, port, DNS, Redis, Nginx, and fault-injection testing without running real containers.**
+**Test Docker deployment and recovery logic without a Docker daemon.**
 
 [![CI](https://github.com/vas1le/docker-zero/actions/workflows/ci.yml/badge.svg)](https://github.com/vas1le/docker-zero/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/vas1le/docker-zero/actions/workflows/codeql.yml/badge.svg)](https://github.com/vas1le/docker-zero/actions/workflows/codeql.yml)
@@ -58,7 +58,9 @@ The system under test can continue using `DOCKER_HOST` and the normal Docker API
 
 ## Quick start
 
-Build:
+The example requires Linux, Go 1.23+ to build, and the Docker CLI with Compose
+installed **as a client only**. No Docker daemon is required. It uses the
+included `compose.yaml` and random published ports bound to loopback.
 
 ```bash
 git clone https://github.com/vas1le/docker-zero.git
@@ -66,31 +68,52 @@ cd docker-zero
 make build
 ```
 
-Start the healthy baseline:
+In the first terminal, start the healthy baseline and leave it running:
 
 ```bash
 ./dist/docker-zero-linux-amd64 \
   --socket /tmp/docker-zero.sock \
   --seed 0 \
+  --container-endpoints off \
   --ledger-dir ./runs
 ```
 
-Point a Docker client or orchestrator at it:
+In a second terminal **in the same repository directory**:
 
 ```bash
-export DOCKER_HOST=unix:///tmp/docker-zero.sock
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -f compose.yaml up -d
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -f compose.yaml ps
+
+web_address=$(DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -f compose.yaml port web 80)
+curl --fail "http://${web_address}/health"
+
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -f compose.yaml down
 ```
 
-For example:
+The health request should return HTTP 200 from the Nginx fixture. `down` removes
+the example's simulated containers and network; press Ctrl-C in the first
+terminal to stop docker-zero. Each command scopes `DOCKER_HOST` to that client
+process, leaving other shells and normal Docker commands unchanged.
 
-```bash
-docker compose up -d
-docker compose ps
-```
-
-Compose itself is not reimplemented. The real Docker Compose client parses `compose.yaml` and calls the mock Docker Engine API.
+Compose itself is not reimplemented: the real client parses the supplied file
+and calls the simulated Engine. This validates a control-plane flow, not real
+Nginx/Redis containers or your application's behavior inside them. Read the
+[compatibility contract](docs/compatibility.md), especially configuration
+warnings, strict mode, exec fixtures, and restart-policy limitations.
 
 `--container-endpoints auto` is the default. In this mode docker-zero attempts direct virtual container-IP listeners where the host permits them and still provides published-port listeners. `--container-endpoints on` is strict: if a virtual endpoint cannot bind, startup fails. On Linux, strict emulation of container ports below 1024 requires the host to allow unprivileged low-port binding or the process to have the corresponding privilege/capability.
+
+## Verify downloaded binaries
+
+Place `SHA256SUMS` and both Linux binaries in the same directory, then run:
+
+```bash
+sha256sum --check SHA256SUMS
+chmod +x docker-zero-linux-amd64
+```
+
+The manifest uses filenames relative to that directory, with no `dist/` prefix.
+`make package-test` checks this extracted release/CI-artifact layout.
 
 ## Scenarios
 
@@ -101,7 +124,7 @@ The shipped convention is:
 ```text
 seed 0 = healthy baseline
 seed 1 = transient failure / recovery
-seed 2 = crash / restart path
+seed 2 = crash (automatic recovery requires an explicit restart policy)
 ```
 
 Run one global scenario:

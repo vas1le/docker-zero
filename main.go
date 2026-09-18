@@ -37,6 +37,7 @@ type options struct {
 	containerEndpoints string
 	socketMode         string
 	bootstrap          bool
+	strictConfig       bool
 	check              bool
 	showVersion        bool
 }
@@ -115,6 +116,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	flags.StringVar(&opts.containerEndpoints, "container-endpoints", "auto", "bind cookbook container IP:port endpoints: auto, on, or off")
 	flags.StringVar(&opts.socketMode, "socket-mode", "0660", "Unix socket mode in octal")
 	flags.BoolVar(&opts.bootstrap, "bootstrap", false, "pre-create and start nginx-zero and redis-zero")
+	flags.BoolVar(&opts.strictConfig, "strict", false, "reject metadata-only container configuration instead of warning")
 	flags.BoolVar(&opts.check, "check", false, "validate cookbooks, paths, and listener availability, then exit")
 	flags.BoolVar(&opts.showVersion, "version", false, "print version and exit")
 	if err := flags.Parse(args); err != nil {
@@ -141,6 +143,7 @@ func serve(opts options, cookbooks map[string]*Cookbook, overrides map[string]in
 	}
 	engine := newEngine(cookbooks, opts.seed, overrides, ledger)
 	engine.endpointMode = endpointMode
+	engine.strictConfig = opts.strictConfig
 
 	if opts.bootstrap {
 		for _, kind := range sortedCookbookKinds(cookbooks) {

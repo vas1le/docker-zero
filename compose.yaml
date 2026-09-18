@@ -1,0 +1,13 @@
+# Run this example against docker-zero, not your normal Docker daemon.
+name: docker-zero-example
+services:
+  web:
+    image: nginx:alpine
+    restart: "no"
+    ports:
+      - "127.0.0.1::80"
+  cache:
+    image: redis:7-alpine
+    restart: "no"
+    ports:
+      - "127.0.0.1::6379"

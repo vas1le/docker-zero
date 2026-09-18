@@ -26,6 +26,9 @@ type dockerResponseRecorder struct {
 	bytes  int
 }
 
+// Unwrap lets http.ResponseController preserve flushing through the recorder.
+func (r *dockerResponseRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
 func (r *dockerResponseRecorder) WriteHeader(status int) {
 	if r.status != 0 {
 		return
@@ -75,6 +78,14 @@ func (api *DockerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Ostype", "linux")
 	w.Header().Set("X-Docker-Zero-Version", version)
 
+	if err := validateAPIVersion(r.URL.Path); err != nil {
+		writeDockerError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if path == "/__docker_zero/capabilities" && r.Method == http.MethodGet {
+		writeJSON(w, http.StatusOK, api.engine.capabilities())
+		return
+	}
 	if path == "/_ping" {
 		api.handlePing(w, r)
 		return

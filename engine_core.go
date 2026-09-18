@@ -41,12 +41,17 @@ type Volume struct {
 type ExecInstance struct {
 	mu sync.Mutex
 
-	ID          string
-	ContainerID string
-	Command     []string
-	Running     bool
-	ExitCode    int
-	Output      string
+	ID              string
+	ContainerID     string
+	Command         []string
+	Running         bool
+	ExitCode        *int
+	Output          string
+	Stderr          string
+	FixtureExitCode int
+	AttachStdout    bool
+	AttachStderr    bool
+	Started         bool
 }
 
 type Engine struct {
@@ -66,6 +71,7 @@ type Engine struct {
 	execs        map[string]*ExecInstance
 	runtimes     map[string]*ContainerRuntime
 	endpointMode string
+	strictConfig bool
 
 	runtimeGate    sync.RWMutex
 	runtimeClosing bool
@@ -114,24 +120,6 @@ func (e *Engine) seedFor(kind, name string) int {
 	return e.seed
 }
 
-func (e *Engine) cookbookFor(name, image string) (*Cookbook, error) {
-	nameLower := strings.ToLower(name)
-	imageLower := strings.ToLower(image)
-	for _, kind := range sortedCookbookKinds(e.cookbooks) {
-		cb := e.cookbooks[kind]
-		if strings.Contains(nameLower, strings.ToLower(cb.Kind)) {
-			return cb, nil
-		}
-		for _, candidate := range cb.ImageNames {
-			candidate = strings.ToLower(candidate)
-			if imageLower == candidate || strings.HasPrefix(imageLower, candidate+":") || strings.Contains(imageLower, candidate) {
-				return cb, nil
-			}
-		}
-	}
-	return nil, fmt.Errorf("no cookbook matches name=%q image=%q", name, image)
-}
-
 func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string) (*Container, error) {
 	name = strings.TrimPrefix(strings.TrimSpace(name), "/")
 	if name == "" {
@@ -143,7 +131,7 @@ func (e *Engine) createContainer(name, image string, labels map[string]string, e
 	if image == "" {
 		return nil, errors.New("image is required")
 	}
-	cb, err := e.cookbookFor(name, image)
+	cb, err := e.containerCookbook(image, labels)
 	if err != nil {
 		return nil, err
 	}
@@ -265,12 +253,18 @@ func (e *Engine) removeContainer(ref string, force bool) error {
 	e.mu.Lock()
 	delete(e.containers, container.ID)
 	delete(e.runtimes, container.ID)
+	for id, exec := range e.execs {
+		if exec.ContainerID == container.ID {
+			delete(e.execs, id)
+		}
+	}
 	delete(e.names, container.Name)
 	for _, network := range e.networks {
 		delete(network.Containers, container.ID)
 	}
 	e.mu.Unlock()
 	before := container.stateSnapshot()
+	container.markRemoved()
 	e.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.remove", Before: &before})
 	return nil
 }

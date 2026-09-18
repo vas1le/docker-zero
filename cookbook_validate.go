@@ -112,6 +112,10 @@ func (c *Cookbook) validate() error {
 			}
 		}
 
+		if err := validateExecFixtures(basePath+"/exec", scenario.Exec); err != nil {
+			return err
+		}
+
 		for index, transition := range scenario.Transitions {
 			path := fmt.Sprintf("%s/transitions/%d", basePath, index)
 			if strings.TrimSpace(transition.Event) == "" {
