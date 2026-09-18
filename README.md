@@ -203,6 +203,21 @@ tag:     v0.4.2
 
 The release workflow rejects a tag that does not match `VERSION`, then runs validation and builds static Linux `amd64` and `arm64` binaries with SHA-256 checksums.
 
+## Container configuration fidelity
+
+Create requests retain user, working directory, entrypoint, healthcheck, restart
+policy, and additional configuration for inspection. Meaningful settings that the
+simulator cannot execute (such as filesystem mounts, resource limits, or a custom
+health command) return a create warning and `X-Docker-Zero-Unsupported: true`, even
+when the metadata is accepted with HTTP 201. Inspect repeats the marker and lists
+these fields under `DockerZero.MetadataOnly`. The matrix runner classifies such a
+run as **mock_incomplete**, not a passing compatibility test.
+
+A custom healthcheck is never replaced by the built-in healthy result: its command
+is stored, but `State.Health` is omitted because it was not executed. A `NONE`
+healthcheck disables health reporting; omitted/null healthchecks inherit the
+cookbook fixture. Omitted restart policy defaults to `no`.
+
 ## Current scope
 
 `docker-zero` is not a general-purpose container runtime and does not aim to implement every Docker feature.

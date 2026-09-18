@@ -121,7 +121,7 @@ func (e *Engine) cookbookFor(name, image string) (*Cookbook, error) {
 	return nil, fmt.Errorf("no cookbook matches name=%q image=%q", name, image)
 }
 
-func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string) (*Container, error) {
+func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string, config ...*createContainerRequest) (*Container, error) {
 	name = strings.TrimPrefix(strings.TrimSpace(name), "/")
 	if name == "" {
 		name = fmt.Sprintf("docker-zero-%d", e.counter.Add(1))
@@ -151,6 +151,9 @@ func (e *Engine) createContainer(name, image string, labels map[string]string, e
 	container.Labels = cloneStringMap(labels)
 	container.Env = append([]string(nil), env...)
 	container.Command = append([]string(nil), command...)
+	if len(config) != 0 && config[0] != nil {
+		container.captureCreateMetadata(config[0])
+	}
 	e.containers[id] = container
 	e.names[name] = id
 	e.mu.Unlock()

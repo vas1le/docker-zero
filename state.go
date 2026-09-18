@@ -31,6 +31,10 @@ type Container struct {
 	waiters map[*containerWaiter]struct{}
 	removed bool
 
+	createMetadata containerCreateMetadata
+	RestartPolicy  RestartPolicy
+	ExposedPorts   map[string]any
+
 	ID       string
 	Name     string
 	Image    string
@@ -119,6 +123,7 @@ func newContainer(id, name, image string, cb *Cookbook, seed int) *Container {
 		Spec:               cb.Defaults,
 		Scenario:           scenario,
 		Status:             "created",
+		RestartPolicy:      RestartPolicy{Name: "no"},
 		Health:             HealthState{Status: ""},
 		NetworkMode:        "default",
 		PortBindings:       make(map[string][]PortBinding),

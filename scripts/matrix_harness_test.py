@@ -78,6 +78,32 @@ def test_unsupported_classification(matrix: Path, engine: Path, temp: Path) -> N
     assert result["unsupported_docker_requests"] == ["GET /not-implemented"], result
 
 
+def test_metadata_only_classification(matrix: Path, engine: Path, temp: Path) -> None:
+    target = temp / "metadata_target.py"
+    write_executable(target, r'''
+        #!/usr/bin/env python3
+        import os
+        import socket
+        body = b'{"Image":"nginx:alpine","User":"1000"}'
+        request = (b"POST /v1.43/containers/create HTTP/1.1\r\nHost:x\r\n"
+                   b"Content-Type:application/json\r\nConnection:close\r\nContent-Length:"
+                   + str(len(body)).encode() + b"\r\n\r\n" + body)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.connect(os.environ["DOCKER_HOST"].removeprefix("unix://"))
+            client.sendall(request)
+            response = b""
+            while data := client.recv(65536):
+                response += data
+        assert b"201 Created" in response, response
+    ''')
+    root = temp / "metadata-results"
+    completed = run_matrix(matrix, engine, [sys.executable, str(target)], root)
+    assert completed.returncode == 1, completed.stdout
+    result = load_only_result(root)
+    assert result["status"] == "mock_incomplete", (result, completed.stdout)
+    assert result["unsupported_docker_requests"] == ["POST /containers/create"], result
+
+
 def test_engine_death_and_log_flood(matrix: Path, temp: Path) -> None:
     fake_engine = temp / "fake_broken_engine.py"
     write_executable(
@@ -152,6 +178,8 @@ def main() -> int:
         temp = Path(directory)
         test_unsupported_classification(matrix, engine, temp)
         print("PASS matrix classifies unsupported Docker calls as mock_incomplete")
+        test_metadata_only_classification(matrix, engine, temp)
+        print("PASS matrix rejects metadata-only success as mock_incomplete")
         test_engine_death_and_log_flood(matrix, temp)
         print("PASS matrix detects engine death and cannot deadlock on engine log output")
     return 0

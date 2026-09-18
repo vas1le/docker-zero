@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,6 +68,11 @@ func dockerPortBindingDocuments(c *Container) (map[string]any, map[string]any, m
 	hostConfig := make(map[string]any)
 	networkPorts := make(map[string]any)
 	exposed := map[string]any{fmt.Sprintf("%d/tcp", c.Spec.ContainerPort): map[string]any{}}
+	c.mu.Lock()
+	for port := range c.ExposedPorts {
+		exposed[port] = map[string]any{}
+	}
+	c.mu.Unlock()
 	for key, items := range bindings {
 		exposed[key] = map[string]any{}
 		hostItems := make([]any, 0, len(items))
@@ -102,19 +109,26 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 		"OOMKilled": c.OOMKilled, "Dead": c.Dead, "Pid": c.Pid, "ExitCode": c.ExitCode, "Error": c.Error,
 		"StartedAt": formatDockerTime(c.Started), "FinishedAt": formatDockerTime(c.Finished),
 	}
-	if c.Health.Status != "" {
-		state["Health"] = map[string]any{"Status": c.Health.Status, "FailingStreak": c.Health.FailingStreak, "Log": c.Health.Log}
+	if c.Health.Status != "" && !c.createMetadata.healthOverride {
+		state["Health"] = map[string]any{"Status": c.Health.Status, "FailingStreak": c.Health.FailingStreak, "Log": slices.Clone(c.Health.Log)}
 	}
 	id, created, imageID, name, restartCount, networkMode := c.ID, c.Created, c.ImageID, c.Name, c.RestartCount, c.NetworkMode
 	image, env, command := c.Image, append([]string(nil), c.Env...), append([]string(nil), c.Command...)
 	labels := cloneStringMap(c.Labels)
 	primaryIP := c.PrimaryIP
 	containerPort := c.Spec.ContainerPort
+	metadata := c.createMetadata
+	restartPolicy := c.RestartPolicy
 	c.mu.Unlock()
 
+	var entrypoint []string
+	if raw := metadata.config["Entrypoint"]; len(raw) != 0 {
+		_ = json.Unmarshal(raw, &entrypoint) // Already validated by create decoding.
+	}
+	processCommand := append(entrypoint, command...)
 	hostPortBindings, networkPorts, exposed := dockerPortBindingDocuments(c)
-	return map[string]any{
-		"Id": id, "Created": formatDockerTime(created), "Path": firstOrEmpty(command), "Args": restOrEmpty(command), "State": state,
+	document := map[string]any{
+		"Id": id, "Created": formatDockerTime(created), "Path": firstOrEmpty(processCommand), "Args": restOrEmpty(processCommand), "State": state,
 		"Image": imageID, "ResolvConfPath": "/var/lib/docker-zero/containers/" + id + "/resolv.conf",
 		"HostnamePath": "/var/lib/docker-zero/containers/" + id + "/hostname", "HostsPath": "/var/lib/docker-zero/containers/" + id + "/hosts",
 		"LogPath": "/var/lib/docker-zero/containers/" + id + "/" + id + "-json.log", "Name": "/" + name,
@@ -122,7 +136,7 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 		"HostConfig": map[string]any{
 			"Binds": nil, "ContainerIDFile": "", "LogConfig": map[string]any{"Type": "json-file", "Config": map[string]string{}},
 			"NetworkMode": networkMode, "PortBindings": hostPortBindings,
-			"RestartPolicy": map[string]any{"Name": "unless-stopped", "MaximumRetryCount": 0}, "AutoRemove": false,
+			"RestartPolicy": restartPolicy, "AutoRemove": false,
 			"VolumeDriver": "", "VolumesFrom": nil, "ConsoleSize": []int{0, 0}, "CapAdd": nil, "CapDrop": nil,
 			"CgroupnsMode": "private", "Dns": []string{"127.0.0.11"}, "DnsOptions": nil, "DnsSearch": nil, "ExtraHosts": nil, "GroupAdd": nil,
 			"IpcMode": "private", "Cgroup": "", "Links": nil, "OomScoreAdj": 0, "PidMode": "", "Privileged": false,
@@ -141,8 +155,17 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 			"EndpointID": hashID("endpoint:" + id), "Gateway": "127.0.0.1", "GlobalIPv6Address": "", "GlobalIPv6PrefixLen": 0,
 			"IPAddress": primaryIP, "IPPrefixLen": 24, "IPv6Gateway": "", "MacAddress": macForContainer(id), "Networks": networks,
 		},
-		"DockerZero": map[string]any{"ContainerPort": containerPort},
+		"DockerZero": map[string]any{"ContainerPort": containerPort, "MetadataOnly": slices.Clone(metadata.metadataOnly)},
 	}
+	config := document["Config"].(map[string]any)
+	for field, raw := range metadata.config {
+		config[field] = raw
+	}
+	hostConfig := document["HostConfig"].(map[string]any)
+	for field, raw := range metadata.hostConfig {
+		hostConfig[field] = raw
+	}
+	return document
 }
 
 func networkEndpointFor(c *Container, network *Network, endpoint map[string]any) map[string]any {
@@ -191,7 +214,7 @@ func humanContainerStatus(c *Container) string {
 		if c.Started.IsZero() {
 			age = 0
 		}
-		if c.Health.Status != "" {
+		if c.Health.Status != "" && !c.createMetadata.healthOverride {
 			return fmt.Sprintf("Up %s (%s)", age, c.Health.Status)
 		}
 		return fmt.Sprintf("Up %s", age)

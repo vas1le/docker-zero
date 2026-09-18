@@ -30,6 +30,7 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.syncRuntimeForState(container)
 		doc := containerInspectDocument(container, api.engine.containerNetworkEndpoints(container))
 		api.engine.logContainerEvent(container, "container.inspect", advance, nil, map[string]any{"status": doc["State"].(map[string]any)["Status"]})
+		container.metadataWarnings(w)
 		writeJSON(w, http.StatusOK, doc)
 	case action == "start" && r.Method == http.MethodPost:
 		before := container.stateSnapshot()
