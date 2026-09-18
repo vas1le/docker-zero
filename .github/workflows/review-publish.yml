@@ -1,0 +1,111 @@
+name: Temporary review validation and publication
+on:
+  push:
+    branches: [workbench/review-publish]
+permissions:
+  contents: write
+jobs:
+  validate-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply verified individual patches onto pinned main
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/review-evidence"
+          cat .review/patch-part-* | base64 --decode > "$RUNNER_TEMP/fixes.mbox.xz"
+          echo "d5a762ba4a51352d416d018dfdc6156b8fd62a45b150ef1c3c464cd4eb93977e  $RUNNER_TEMP/fixes.mbox.xz" | sha256sum --check
+          xz --decompress --stdout "$RUNNER_TEMP/fixes.mbox.xz" > "$RUNNER_TEMP/fixes.mbox"
+          git config user.name Kubix0
+          git config user.email 77937965+vas1le@users.noreply.github.com
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = 189b479c9f430f81b7401d2efebd462869897a53
+          git checkout -b fix/review-fidelity origin/main
+          git am --committer-date-is-author-date "$RUNNER_TEMP/fixes.mbox"
+          test "$(git rev-list --count origin/main..HEAD)" = 10
+          test "$(git write-tree)" = d7d3e2db2e7e6461778e2c720a4ea873f07f8e5f
+          git diff --check origin/main...HEAD
+          git log --format='%H %s' origin/main..HEAD | tee "$RUNNER_TEMP/review-evidence/commits.txt"
+          git write-tree | tee "$RUNNER_TEMP/review-evidence/tree.txt"
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Allow strict virtual endpoint tests
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+      - name: Unit race format vet and Python checks
+        id: quality
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          { make fmt-check; go test -json ./...; go test -race -shuffle=on -count=10 ./...; go vet ./...; python3 -m py_compile scripts/*.py; } 2>&1 | tee "$RUNNER_TEMP/review-evidence/quality.log"
+      - name: Integration doctor and matrix
+        id: integration
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          make integration doctor matrix-smoke matrix-harness-test 2>&1 | tee "$RUNNER_TEMP/review-evidence/integration.log"
+      - name: Real Docker Compose topology
+        id: topology
+        continue-on-error: true
+        env:
+          COMPOSE_BIN: docker compose
+        run: |
+          set -euo pipefail
+          docker compose version | tee "$RUNNER_TEMP/review-evidence/compose-version.txt"
+          make compose-topology 2>&1 | tee "$RUNNER_TEMP/review-evidence/compose-topology.log"
+      - name: Real Docker Compose quickstart
+        id: quickstart
+        continue-on-error: true
+        env:
+          COMPOSE_BIN: docker compose
+        run: |
+          set -euo pipefail
+          make quickstart-test 2>&1 | tee "$RUNNER_TEMP/review-evidence/quickstart.log"
+      - name: golangci-lint
+        id: lint
+        continue-on-error: true
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          args: --timeout=5m
+      - name: govulncheck
+        id: vuln
+        continue-on-error: true
+        uses: golang/govulncheck-action@v1.1.0
+        with:
+          go-version-file: go.mod
+          go-package: ./...
+      - name: Release builds and portable checksum tests
+        id: builds
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          make checksums 2>&1 | tee "$RUNNER_TEMP/review-evidence/builds.log"
+      - name: Capture lint diagnostics
+        if: always()
+        run: |
+          linter=$(find "$HOME" -maxdepth 4 -type f -name golangci-lint -executable 2>/dev/null | head -1)
+          if test -n "$linter"; then "$linter" run --timeout=5m > "$RUNNER_TEMP/review-evidence/lint.log" 2>&1 || true; fi
+      - name: Publish only after all validation succeeds
+        env:
+          RESULTS: '${{ steps.quality.outcome }} ${{ steps.integration.outcome }} ${{ steps.topology.outcome }} ${{ steps.quickstart.outcome }} ${{ steps.lint.outcome }} ${{ steps.vuln.outcome }} ${{ steps.builds.outcome }}'
+        run: |
+          set -euo pipefail
+          echo "$RESULTS" | tee "$RUNNER_TEMP/review-evidence/outcomes.txt"
+          for result in $RESULTS; do test "$result" = success; done
+          test "$(git write-tree)" = d7d3e2db2e7e6461778e2c720a4ea873f07f8e5f
+          git push origin HEAD:refs/heads/fix/review-fidelity
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-zero-fix-validation
+          retention-days: 3
+          path: |
+            ${{ runner.temp }}/review-evidence
+            /tmp/docker-zero-compose-topology-*/engine.log
+            /tmp/docker-zero-compose-topology-*/ledgers
+          if-no-files-found: warn
