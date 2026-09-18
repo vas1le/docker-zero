@@ -26,6 +26,9 @@ type dockerResponseRecorder struct {
 	bytes  int
 }
 
+// Unwrap lets http.ResponseController preserve flushing through the recorder.
+func (r *dockerResponseRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
 func (r *dockerResponseRecorder) WriteHeader(status int) {
 	if r.status != 0 {
 		return

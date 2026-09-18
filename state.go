@@ -28,6 +28,9 @@ type HealthLog struct {
 type Container struct {
 	mu sync.Mutex
 
+	waiters map[*containerWaiter]struct{}
+	removed bool
+
 	ID       string
 	Name     string
 	Image    string
@@ -313,6 +316,7 @@ func (c *Container) applyPatch(patch StatePatch) (ContainerStateSnapshot, Contai
 
 func (c *Container) applyPatchLocked(patch StatePatch) {
 	oldStatus := c.Status
+	oldRunning, oldRestarting := c.Running, c.Restarting
 	oldHealth := c.Health.Status
 
 	if patch.Status != nil {
@@ -414,6 +418,7 @@ func (c *Container) applyPatchLocked(patch StatePatch) {
 			c.Health.Log = c.Health.Log[len(c.Health.Log)-5:]
 		}
 	}
+	c.notifyWaitersLocked(oldRunning && !oldRestarting && (!c.Running || c.Restarting))
 }
 
 func (c *Container) start() (ContainerStateSnapshot, ContainerStateSnapshot) {
