@@ -39,3 +39,10 @@ exec fixtures.
 TTY, stdin, privilege, user/environment/workdir overrides, and detach-key
 semantics are not modeled and are explicitly rejected. Fixtures reproduce
 configured outcomes only; they do not establish that a real command works.
+
+## Archives
+
+Container archive PUT, GET, and HEAD return HTTP 501 with the unsupported
+marker. No upload is accepted, no filesystem mutation is implied, and these
+requests do not advance scenario state. A successful Docker copy requires a
+real Engine or a future explicitly implemented filesystem model.

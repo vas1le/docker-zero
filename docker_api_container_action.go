@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -121,11 +120,8 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusOK, map[string]any{"Titles": []string{"UID", "PID", "PPID", "C", "STIME", "TTY", "TIME", "CMD"}, "Processes": [][]string{}})
 	case action == "exec" && r.Method == http.MethodPost:
 		api.handleExecCreate(w, r, container)
-	case action == "archive" && (r.Method == http.MethodPut || r.Method == http.MethodHead):
-		advance := container.advance("docker.archive")
-		_, _ = io.Copy(io.Discard, r.Body)
-		api.engine.logContainerEvent(container, "container.archive", advance, map[string]any{"path": r.URL.Query().Get("path")}, nil)
-		w.WriteHeader(http.StatusOK)
+	case action == "archive" && (r.Method == http.MethodPut || r.Method == http.MethodHead || r.Method == http.MethodGet):
+		writeUnsupportedDockerError(w, http.StatusNotImplemented, "archive operations are not simulated: docker-zero has no container filesystem")
 	case action == "json" && r.Method == http.MethodDelete:
 		fallthrough
 	case len(parts) == 1 && r.Method == http.MethodDelete:
