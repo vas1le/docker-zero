@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -28,8 +29,13 @@ type HealthLog struct {
 type Container struct {
 	mu sync.Mutex
 
-	waiters map[*containerWaiter]struct{}
-	removed bool
+	waiters             map[*containerWaiter]struct{}
+	removed             bool
+	requestedConfig     map[string]json.RawMessage
+	requestedHostConfig map[string]json.RawMessage
+	metadataOnlyFields  []string
+	healthDisabled      bool
+	RestartPolicy       RestartPolicy
 
 	ID       string
 	Name     string
@@ -121,6 +127,7 @@ func newContainer(id, name, image string, cb *Cookbook, seed int) *Container {
 		Status:             "created",
 		Health:             HealthState{Status: ""},
 		NetworkMode:        "default",
+		RestartPolicy:      RestartPolicy{Name: "no"},
 		PortBindings:       make(map[string][]PortBinding),
 		Redis:              RedisReplicationState{Role: "master", MasterLinkStatus: "up"},
 		Counters:           make(map[string]int),

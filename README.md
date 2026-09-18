@@ -195,6 +195,13 @@ Not implemented as real kernel/runtime features:
 - Docker disk-usage accounting (`GET /system/df`);
 - arbitrary Engine endpoints not required by a tested client or compatibility case.
 
+Container creation preserves the supplied configuration, including healthcheck definitions,
+user, working directory, entrypoint, and restart policy. Retaining a field does **not**
+mean docker-zero executes or enforces it: creation `Warnings` and inspect's
+`DockerZero.MetadataOnlyFields` identify metadata-only fields. Health is driven by
+the cookbook, not by executing the requested healthcheck command; `Test: ["NONE"]`
+omits `State.Health`. The default restart policy is `no`.
+
 When a Docker API operation is unsupported, the mock reports it explicitly with `X-Docker-Zero-Unsupported: true` and records the request in the ledger.
 
 ## Open source
