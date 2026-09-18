@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -88,6 +89,10 @@ func (api *DockerAPI) handleContainerCreate(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if err != nil {
+		if errors.Is(err, errImageMapping) {
+			writeUnsupportedDockerError(w, http.StatusNotImplemented, err.Error())
+			return
+		}
 		status := http.StatusBadRequest
 		if strings.Contains(strings.ToLower(err.Error()), "conflict") {
 			status = http.StatusConflict
