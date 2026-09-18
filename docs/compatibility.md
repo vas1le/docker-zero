@@ -112,3 +112,11 @@ previously created exec after stop, pause, crash, or restart-in-progress returns
 409. Removing a container invalidates its exec records. Killing a stopped
 container returns 409 without replacing its exit code. SIGKILL (the default,
 `KILL`, `SIGKILL`, or `9`) is modeled; other signals are explicitly unsupported.
+
+## API version negotiation
+
+Versioned requests outside the advertised 1.24–1.43 range return HTTP 400 before
+routing or mutating resources. Versions are integer major/minor pairs, never
+floating-point numbers (1.9 is older than 1.24). Unversioned endpoints remain
+available for client negotiation. A supported version number indicates protocol
+routing compatibility, **not** implementation of every endpoint in that API.
