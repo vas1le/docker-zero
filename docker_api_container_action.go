@@ -100,6 +100,16 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusNoContent)
 	case action == "kill" && r.Method == http.MethodPost:
 		before := container.stateSnapshot()
+		if !before.Running || before.Restarting || before.Dead {
+			writeDockerError(w, http.StatusConflict, "container is not running")
+			return
+		}
+		switch strings.ToUpper(r.URL.Query().Get("signal")) {
+		case "", "9", "KILL", "SIGKILL":
+		default:
+			writeUnsupportedDockerError(w, http.StatusNotImplemented, "only SIGKILL is simulated")
+			return
+		}
 		_ = api.engine.stopContainerRuntime(container)
 		container.stop(137)
 		advance := container.advance("docker.kill")
@@ -120,11 +130,8 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.top", advance, nil, nil)
 		writeJSON(w, http.StatusOK, map[string]any{"Titles": []string{"UID", "PID", "PPID", "C", "STIME", "TTY", "TIME", "CMD"}, "Processes": [][]string{}})
 	case action == "exec" && r.Method == http.MethodPost:
-		container.mu.Lock()
-		paused := container.Paused
-		container.mu.Unlock()
-		if paused {
-			writeDockerError(w, http.StatusConflict, "container is paused, unpause the container before exec")
+		if err := container.checkExecState(); err != nil {
+			writeDockerError(w, http.StatusConflict, err.Error())
 			return
 		}
 		var request struct {

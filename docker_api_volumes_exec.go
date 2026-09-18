@@ -76,6 +76,14 @@ func (api *DockerAPI) handleExecAction(w http.ResponseWriter, r *http.Request, r
 	container, _ := api.engine.findContainer(exec.ContainerID)
 	switch {
 	case action == "start" && r.Method == http.MethodPost:
+		if container == nil {
+			writeDockerError(w, http.StatusNotFound, "exec container no longer exists")
+			return
+		}
+		if err := container.checkExecState(); err != nil {
+			writeDockerError(w, http.StatusConflict, err.Error())
+			return
+		}
 		exec.mu.Lock()
 		exec.Running = false
 		output := exec.Output
