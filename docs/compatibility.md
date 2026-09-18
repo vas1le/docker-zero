@@ -104,3 +104,11 @@ model. Determinism means repeatability for a fixed request sequence, not arbitra
 thread scheduling. With automatic restart enabled, seeing a healthy service does
 not prove the controller intervened; inspect the ledger for the required API
 start/restart/rollback actions. For controller recovery tests use policy `no`.
+
+## Lifecycle preconditions
+
+Exec creation and execution require a running, unpaused container. Starting a
+previously created exec after stop, pause, crash, or restart-in-progress returns
+409. Removing a container invalidates its exec records. Killing a stopped
+container returns 409 without replacing its exit code. SIGKILL (the default,
+`KILL`, `SIGKILL`, or `9`) is modeled; other signals are explicitly unsupported.

@@ -98,9 +98,17 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.restart", advance, nil, nil)
 		w.WriteHeader(http.StatusNoContent)
 	case action == "kill" && r.Method == http.MethodPost:
-		before := container.stateSnapshot()
+		signal := r.URL.Query().Get("signal")
+		if signal != "" && signal != "KILL" && signal != "SIGKILL" && signal != "9" {
+			writeUnsupportedDockerError(w, http.StatusNotImplemented, "only SIGKILL is modeled; other signals require a fixture")
+			return
+		}
+		before, err := container.kill()
+		if err != nil {
+			writeDockerError(w, http.StatusConflict, err.Error())
+			return
+		}
 		_ = api.engine.stopContainerRuntime(container)
-		container.stop(137)
 		advance := container.advance("docker.kill")
 		advance.Before = before
 		api.engine.logContainerEvent(container, "container.kill", advance, nil, nil)

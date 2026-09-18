@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -51,8 +52,19 @@ func validateExecFixtures(path string, fixtures []ExecFixture) error {
 	return nil
 }
 
-func (e *Engine) createExec(c *Container, request execCreateRequest) (*ExecInstance, bool) {
+var errExecFixtureMissing = errors.New("no exact exec fixture configured for the requested command; docker-zero does not execute processes")
+
+func (e *Engine) createExec(c *Container, request execCreateRequest) (*ExecInstance, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.execPreconditionLocked(); err != nil {
+		return nil, err
+	}
+	if e.containers[c.ID] != c {
+		return nil, fmt.Errorf("container %s was removed", c.Name)
+	}
 	var fixture *ExecFixture
 	for _, candidate := range c.Scenario.Exec {
 		if slices.Equal(candidate.Cmd, request.Cmd) {
@@ -60,9 +72,8 @@ func (e *Engine) createExec(c *Container, request execCreateRequest) (*ExecInsta
 			break
 		}
 	}
-	c.mu.Unlock()
 	if fixture == nil {
-		return nil, false
+		return nil, errExecFixtureMissing
 	}
 	id := hashID(fmt.Sprintf("exec:%s:%d", c.ID, e.counter.Add(1)))
 	exec := &ExecInstance{
@@ -70,19 +81,17 @@ func (e *Engine) createExec(c *Container, request execCreateRequest) (*ExecInsta
 		Output: fixture.Stdout, Stderr: fixture.Stderr, FixtureExitCode: fixture.ExitCode,
 		AttachStdout: request.AttachStdout, AttachStderr: request.AttachStderr,
 	}
-	e.mu.Lock()
 	e.execs[id] = exec
-	e.mu.Unlock()
 	e.ledger.Log(LedgerEntry{Container: c.Name, Kind: c.Kind, Scenario: c.Seed, Channel: "docker", Event: "exec.create", Request: map[string]any{"cmd": request.Cmd}, Response: map[string]any{"id": id}})
-	return exec, true
+	return exec, nil
 }
 
 func (api *DockerAPI) handleExecCreate(w http.ResponseWriter, r *http.Request, c *Container) {
 	c.mu.Lock()
-	paused := c.Paused
+	stateErr := c.execPreconditionLocked()
 	c.mu.Unlock()
-	if paused {
-		writeDockerError(w, http.StatusConflict, "container is paused, unpause the container before exec")
+	if stateErr != nil {
+		writeDockerError(w, http.StatusConflict, stateErr.Error())
 		return
 	}
 	var request execCreateRequest
@@ -98,9 +107,13 @@ func (api *DockerAPI) handleExecCreate(w http.ResponseWriter, r *http.Request, c
 		writeUnsupportedDockerError(w, http.StatusNotImplemented, "exec fixtures do not model TTY, stdin, privilege, user, environment, workdir, or detach keys")
 		return
 	}
-	exec, ok := api.engine.createExec(c, request)
-	if !ok {
-		writeUnsupportedDockerError(w, http.StatusNotImplemented, "no exact exec fixture configured for the requested command; docker-zero does not execute processes")
+	exec, err := api.engine.createExec(c, request)
+	if errors.Is(err, errExecFixtureMissing) {
+		writeUnsupportedDockerError(w, http.StatusNotImplemented, err.Error())
+		return
+	}
+	if err != nil {
+		writeDockerError(w, http.StatusConflict, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"Id": exec.ID})
@@ -119,9 +132,20 @@ func (api *DockerAPI) handleExecStart(w http.ResponseWriter, r *http.Request, ex
 		writeUnsupportedDockerError(w, http.StatusNotImplemented, "exec fixtures do not model TTY sessions")
 		return
 	}
+	if c == nil {
+		writeDockerError(w, http.StatusNotFound, "exec container was removed")
+		return
+	}
+	c.mu.Lock()
+	if err := c.execPreconditionLocked(); err != nil {
+		c.mu.Unlock()
+		writeDockerError(w, http.StatusConflict, err.Error())
+		return
+	}
 	exec.mu.Lock()
 	if exec.Started {
 		exec.mu.Unlock()
+		c.mu.Unlock()
 		writeDockerError(w, http.StatusConflict, "exec instance has already run")
 		return
 	}
@@ -132,10 +156,9 @@ func (api *DockerAPI) handleExecStart(w http.ResponseWriter, r *http.Request, ex
 	command := slices.Clone(exec.Command)
 	exitCode := *exec.ExitCode
 	exec.mu.Unlock()
-	if c != nil {
-		c.appendLog(output + stderr)
-		api.engine.ledger.Log(LedgerEntry{Container: c.Name, Kind: c.Kind, Scenario: c.Seed, Channel: "docker", Event: "exec.start", Request: map[string]any{"id": exec.ID, "cmd": command}, Response: map[string]any{"exit_code": exitCode}})
-	}
+	c.mu.Unlock()
+	c.appendLog(output + stderr)
+	api.engine.ledger.Log(LedgerEntry{Container: c.Name, Kind: c.Kind, Scenario: c.Seed, Channel: "docker", Event: "exec.start", Request: map[string]any{"id": exec.ID, "cmd": command}, Response: map[string]any{"exit_code": exitCode}})
 	if request.Detach {
 		w.WriteHeader(http.StatusOK)
 		return

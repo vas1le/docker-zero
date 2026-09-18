@@ -113,13 +113,14 @@ func TestExecFixtureMatchingUsesArgvNotJoinedText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.start()
 	c.Scenario.Exec = []ExecFixture{{Cmd: []string{"echo", "a b"}, ExitCode: 0}}
-	if _, ok := engine.createExec(c, execCreateRequest{Cmd: []string{"echo", "a", "b"}}); ok {
+	if _, err := engine.createExec(c, execCreateRequest{Cmd: []string{"echo", "a", "b"}}); err == nil {
 		t.Fatal("argument boundaries were ignored")
 	}
 	command := []string{"echo", "a b"}
-	exec, ok := engine.createExec(c, execCreateRequest{Cmd: command})
-	if !ok {
+	exec, err := engine.createExec(c, execCreateRequest{Cmd: command})
+	if err != nil {
 		t.Fatal("exact command did not match")
 	}
 	command[1] = "mutated"

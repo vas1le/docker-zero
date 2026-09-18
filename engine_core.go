@@ -253,6 +253,11 @@ func (e *Engine) removeContainer(ref string, force bool) error {
 	e.mu.Lock()
 	delete(e.containers, container.ID)
 	delete(e.runtimes, container.ID)
+	for id, exec := range e.execs {
+		if exec.ContainerID == container.ID {
+			delete(e.execs, id)
+		}
+	}
 	delete(e.names, container.Name)
 	for _, network := range e.networks {
 		delete(network.Containers, container.ID)
