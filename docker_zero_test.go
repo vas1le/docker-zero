@@ -87,6 +87,7 @@ func TestSeedTwoCrashAndRestartLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	container.RestartPolicy = RestartPolicy{Name: "always"}
 	container.start()
 	container.advance("http.GET /health")
 	crash := container.advance("http.GET /health")

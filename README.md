@@ -105,8 +105,17 @@ The shipped convention is:
 ```text
 seed 0 = healthy baseline
 seed 1 = transient failure / recovery
-seed 2 = crash / restart path
+seed 2 = crash / policy-controlled restart path
 ```
+
+After a seed-2 crash, the default policy `no` leaves the container exited until
+an explicit start/restart request. To test a **daemon-policy fixture**, request
+`HostConfig.RestartPolicy.Name: "always"`, `"unless-stopped"`, or `"on-failure"`.
+Inspect/list calls can step that permitted automatic restart; this does not prove
+that a deployment controller issued a recovery action. `on-failure` respects
+nonzero exit status and `MaximumRetryCount`. Manual stop/kill suppresses automatic
+recovery until an explicit start/restart. Timing/backoff and daemon-reboot policy
+semantics are not emulated.
 
 Run one global scenario:
 

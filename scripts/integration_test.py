@@ -83,11 +83,12 @@ def wait_for_socket(path: str, process: subprocess.Popen[str]) -> None:
     raise AssertionError("Docker socket did not become ready")
 
 
-def create_and_start(socket_path: str, name: str, image: str, host_port: int | None = None) -> str:
+def create_and_start(socket_path: str, name: str, image: str, host_port: int | None = None, *, restart_policy: str = "no") -> str:
     body: dict[str, Any] = {"Image": image}
     if host_port is not None:
         private_port = 80 if "nginx" in image else 6379
         body["HostConfig"] = {"PortBindings": {f"{private_port}/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(host_port)}]}}
+    body.setdefault("HostConfig", {})["RestartPolicy"] = {"Name": restart_policy}
     status, data, _ = docker_request(socket_path, "POST", f"/v1.43/containers/create?name={name}", body)
     assert status == 201, (status, data)
     container_id = json.loads(data)["Id"]
@@ -245,8 +246,8 @@ def run_seed(binary: str, seed: int) -> None:
     # container IP:port endpoints. The two listeners share one state machine.
     with RunningEngine(binary, seed=seed, container_endpoints="on") as engine:
         assert_docker_identity(engine)
-        create_and_start(engine.socket_path, "nginx-zero", "nginx:alpine", engine.nginx_port)
-        create_and_start(engine.socket_path, "redis-zero", "redis:7-alpine", engine.redis_port)
+        create_and_start(engine.socket_path, "nginx-zero", "nginx:alpine", engine.nginx_port, restart_policy="always")
+        create_and_start(engine.socket_path, "redis-zero", "redis:7-alpine", engine.redis_port, restart_policy="always")
 
         nginx_inspect = inspect(engine.socket_path, "nginx-zero")
         redis_inspect = inspect(engine.socket_path, "redis-zero")
@@ -385,7 +386,7 @@ def run_matrix(binary: str) -> None:
 def run_list_driven_restart(binary: str) -> None:
     """A Docker list operation can observe/progress restart state, not only inspect."""
     with RunningEngine(binary, seed=2, container_endpoints="off") as engine:
-        create_and_start(engine.socket_path, "nginx-zero", "nginx:alpine", engine.nginx_port)
+        create_and_start(engine.socket_path, "nginx-zero", "nginx:alpine", engine.nginx_port, restart_policy="always")
         create_and_start(engine.socket_path, "redis-zero", "redis:7-alpine", engine.redis_port)
         assert http_get("127.0.0.1", engine.nginx_port, "/health")[0] == 200
         expect_http_drop("127.0.0.1", engine.nginx_port, "/health")

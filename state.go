@@ -37,6 +37,9 @@ type Container struct {
 	healthDisabled      bool
 	RestartPolicy       RestartPolicy
 
+	manuallyStopped   bool
+	automaticRestarts int
+
 	ID       string
 	Name     string
 	Image    string
@@ -287,6 +290,12 @@ func (c *Container) advance(event string) eventAdvance {
 		if transition.WhenHealth != "" && transition.WhenHealth != c.Health.Status {
 			continue
 		}
+		if transitionRestartsStopped(c.Status, transition.Set) {
+			if !c.automaticRestartAllowedLocked() {
+				continue
+			}
+			c.automaticRestarts++
+		}
 		c.applyPatchLocked(transition.Set)
 		if transition.Once {
 			c.AppliedTransitions[index] = true
@@ -437,6 +446,8 @@ func (c *Container) start() (ContainerStateSnapshot, ContainerStateSnapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	before := c.stateSnapshotLocked()
+	c.manuallyStopped = false
+	c.automaticRestarts = 0
 	patch := c.startPatchLocked()
 	c.applyPatchLocked(patch)
 	c.StartCount++
@@ -484,12 +495,15 @@ func (c *Container) startPatchLocked() StatePatch {
 }
 
 func (c *Container) stop(exitCode int) (ContainerStateSnapshot, ContainerStateSnapshot) {
-	return c.applyPatch(StatePatch{
-		Status:     stringPtr("exited"),
-		Running:    boolPtr(false),
-		Restarting: boolPtr(false),
-		ExitCode:   intPtr(exitCode),
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	c.manuallyStopped = true
+	c.applyPatchLocked(StatePatch{
+		Status: stringPtr("exited"), Running: boolPtr(false),
+		Restarting: boolPtr(false), ExitCode: intPtr(exitCode),
 	})
+	return before, c.stateSnapshotLocked()
 }
 
 func (c *Container) pause() (ContainerStateSnapshot, ContainerStateSnapshot, error) {
@@ -523,14 +537,39 @@ func (c *Container) unpause() (ContainerStateSnapshot, ContainerStateSnapshot, e
 }
 
 func (c *Container) restart() (ContainerStateSnapshot, ContainerStateSnapshot) {
-	return c.applyPatch(StatePatch{
-		Status:            stringPtr("restarting"),
-		Running:           boolPtr(true),
-		Restarting:        boolPtr(true),
-		Health:            stringPtr("starting"),
-		ExitCode:          intPtr(0),
-		RestartCountDelta: 1,
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	c.manuallyStopped = false
+	c.automaticRestarts = 0
+	c.applyPatchLocked(StatePatch{
+		Status: stringPtr("restarting"), Running: boolPtr(true), Restarting: boolPtr(true),
+		Health: stringPtr("starting"), ExitCode: intPtr(0), RestartCountDelta: 1,
 	})
+	return before, c.stateSnapshotLocked()
+}
+
+// Observations step a permitted daemon-policy fixture; they are not a
+// substitute for a controller's explicit restart when the policy is "no".
+func transitionRestartsStopped(status string, patch StatePatch) bool {
+	if status != "exited" && status != "created" && status != "dead" {
+		return false
+	}
+	return patch.Status != nil && (*patch.Status == "running" || *patch.Status == "restarting" || *patch.Status == "paused")
+}
+
+func (c *Container) automaticRestartAllowedLocked() bool {
+	if c.manuallyStopped || c.removed || c.Status != "exited" || c.StartCount == 0 {
+		return false
+	}
+	switch c.RestartPolicy.Name {
+	case "always", "unless-stopped":
+		return true
+	case "on-failure":
+		return c.ExitCode != 0 && (c.RestartPolicy.MaximumRetryCount == 0 || c.automaticRestarts < c.RestartPolicy.MaximumRetryCount)
+	default:
+		return false
+	}
 }
 
 func (c *Container) eventCount(event string) int {
