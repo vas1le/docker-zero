@@ -92,6 +92,10 @@ Compose itself is not reimplemented. The real Docker Compose client parses `comp
 
 `--container-endpoints auto` is the default. In this mode docker-zero attempts direct virtual container-IP listeners where the host permits them and still provides published-port listeners. `--container-endpoints on` is strict: if a virtual endpoint cannot bind, startup fails. On Linux, strict emulation of container ports below 1024 requires the host to allow unprivileged low-port binding or the process to have the corresponding privilege/capability.
 
+Archive upload, download and stat (`PUT`/`GET`/`HEAD /containers/{id}/archive`)
+are explicitly unsupported (HTTP 501 with the unsupported marker). Volume metadata
+is not a container filesystem, and `docker cp` cannot be validated by this simulator.
+
 ## Exec fixtures
 
 Exec never runs a host process. By default, commands are rejected with HTTP 501
