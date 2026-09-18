@@ -75,20 +75,26 @@ Start the healthy baseline:
   --ledger-dir ./runs
 ```
 
-Point a Docker client or orchestrator at it:
+In a second terminal, from the repository root, run the included `compose.yaml`.
+It creates an Nginx HTTP fixture and a Redis fixture; no real containers run.
+A Docker CLI with the Compose plugin is required, but no Docker daemon is needed.
+Scope `DOCKER_HOST` to each command so this demo cannot target your real daemon:
 
 ```bash
-export DOCKER_HOST=unix:///tmp/docker-zero.sock
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -p docker-zero-demo up -d
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -p docker-zero-demo ps
+curl --fail http://127.0.0.1:18080/health
+# Optional, when redis-cli is installed:
+redis-cli -h 127.0.0.1 -p 16379 PING
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -p docker-zero-demo down
 ```
 
-For example:
-
-```bash
-docker compose up -d
-docker compose ps
-```
-
-Compose itself is not reimplemented. The real Docker Compose client parses `compose.yaml` and calls the mock Docker Engine API.
+The ports bind only to `127.0.0.1`. If either is occupied, set
+`DOCKER_ZERO_HTTP_PORT` and/or `DOCKER_ZERO_REDIS_PORT` in that terminal before
+running Compose, and use those ports in the probe commands. Stop the fixture
+engine with Ctrl-C when finished. Compose itself is not reimplemented: the real
+Compose client parses the file and calls the mock Docker Engine API. The
+`make compose-topology` suite exercises this exact example as well.
 
 `--container-endpoints auto` is the default. In this mode docker-zero attempts direct virtual container-IP listeners where the host permits them and still provides published-port listeners. `--container-endpoints on` is strict: if a virtual endpoint cannot bind, startup fails. On Linux, strict emulation of container ports below 1024 requires the host to allow unprivileged low-port binding or the process to have the corresponding privilege/capability.
 

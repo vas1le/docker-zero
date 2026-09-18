@@ -1,0 +1,10 @@
+# Healthy local demo. All published listeners are loopback-only.
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:${DOCKER_ZERO_HTTP_PORT:-18080}:80"
+  cache:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${DOCKER_ZERO_REDIS_PORT:-16379}:6379"
