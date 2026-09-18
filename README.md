@@ -92,6 +92,25 @@ Compose itself is not reimplemented. The real Docker Compose client parses `comp
 
 `--container-endpoints auto` is the default. In this mode docker-zero attempts direct virtual container-IP listeners where the host permits them and still provides published-port listeners. `--container-endpoints on` is strict: if a virtual endpoint cannot bind, startup fails. On Linux, strict emulation of container ports below 1024 requires the host to allow unprivileged low-port binding or the process to have the corresponding privilege/capability.
 
+## Exec fixtures
+
+Exec never runs a host process. By default, commands are rejected with HTTP 501
+and `X-Docker-Zero-Unsupported: true`, rather than returning a fabricated exit 0.
+An external cookbook can declare exact argument-vector matches in each seed:
+
+```json
+"exec": [
+  {"cmd": ["sh", "-c", "exit 42"], "stdout": "", "stderr": "migration failed\n", "exit_code": 42}
+]
+```
+
+Fixture results complete synchronously on exec start. Attached stdout and stderr
+use separate Docker stream frames; inspect reports the configured exit code.
+Detached start returns no output. Exec requires a running, unpaused container at
+both create and start, and an instance can only run once. TTY, stdin, environment,
+user, working-directory and privileged exec options are explicitly unsupported.
+These fixtures test a controller's handling of an outcome, not the command itself.
+
 ## Scenarios
 
 Cookbooks live under `cookbooks/` and define deterministic behavior for a service type.

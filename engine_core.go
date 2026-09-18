@@ -38,17 +38,6 @@ type Volume struct {
 	Scope      string            `json:"Scope"`
 }
 
-type ExecInstance struct {
-	mu sync.Mutex
-
-	ID          string
-	ContainerID string
-	Command     []string
-	Running     bool
-	ExitCode    int
-	Output      string
-}
-
 type Engine struct {
 	mu sync.RWMutex
 

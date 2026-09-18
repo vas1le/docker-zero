@@ -26,6 +26,7 @@ type ServiceDefaults struct {
 }
 
 type Scenario struct {
+	Exec        []ExecFixture              `json:"exec,omitempty"`
 	Description string                     `json:"description"`
 	Initial     StatePatch                 `json:"initial"`
 	Transitions []Transition               `json:"transitions,omitempty"`
