@@ -246,6 +246,10 @@ success-duration reset, or daemon-restart/persistence behavior. To test controll
 recovery, use policy `no` and assert the controller's actual restart/rollback calls
 in the ledger; do not count policy-driven fixture recovery as controller success.
 
+Requests with version prefixes outside the advertised API range (`1.24`–`1.43`)
+are rejected with HTTP 400 before dispatch. Unversioned discovery requests remain
+supported; the advertised range is not a claim of complete Engine API coverage.
+
 ## Current scope
 
 `docker-zero` is not a general-purpose container runtime and does not aim to implement every Docker feature.
