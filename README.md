@@ -92,6 +92,18 @@ Compose itself is not reimplemented. The real Docker Compose client parses `comp
 
 `--container-endpoints auto` is the default. In this mode docker-zero attempts direct virtual container-IP listeners where the host permits them and still provides published-port listeners. `--container-endpoints on` is strict: if a virtual endpoint cannot bind, startup fails. On Linux, strict emulation of container ports below 1024 requires the host to allow unprivileged low-port binding or the process to have the corresponding privilege/capability.
 
+## Verify downloaded binaries
+
+Place `SHA256SUMS` and both Linux binaries in the same directory, then run:
+
+```bash
+sha256sum --check SHA256SUMS
+chmod +x docker-zero-linux-amd64
+```
+
+The manifest uses filenames relative to that directory, with no `dist/` prefix.
+`make package-test` checks this extracted release/CI-artifact layout.
+
 ## Scenarios
 
 Cookbooks live under `cookbooks/` and define deterministic behavior for a service type.
