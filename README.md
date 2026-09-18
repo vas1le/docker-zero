@@ -187,7 +187,7 @@ The release workflow rejects a tag that does not match `VERSION`, then runs vali
 Not implemented as real kernel/runtime features:
 
 - namespaces and cgroups;
-- image filesystem execution;
+- image filesystem execution or archive copy/stat operations (`GET`, `PUT`, and `HEAD /containers/{id}/archive` return HTTP 501 with the unsupported marker);
 - process execution inside containers (`exec` returns HTTP 501 with the unsupported marker, never a fabricated exit code);
 - a real Docker embedded DNS server at `127.0.0.11`;
 - Redis persistence or Redis wire-level replication;
