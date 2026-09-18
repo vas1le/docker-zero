@@ -45,14 +45,8 @@ func (api *DockerAPI) handleImageCreate(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *DockerAPI) handleImageInspect(w http.ResponseWriter, name string) {
-	var cb *Cookbook
-	for _, candidate := range api.engine.cookbooks {
-		if candidate.Defaults.Image == name || strings.HasPrefix(name, candidate.Kind) || strings.Contains(name, candidate.Kind) {
-			cb = candidate
-			break
-		}
-	}
-	if cb == nil {
+	cb, err := api.engine.cookbookFor("", name)
+	if err != nil {
 		writeDockerError(w, http.StatusNotFound, "No such image: "+name)
 		return
 	}

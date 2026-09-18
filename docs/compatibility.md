@@ -73,3 +73,17 @@ reported health; other custom checks are stored, never executed. Service health
 otherwise comes from the cookbook, including its synthetic default healthcheck.
 
 `GET /__docker_zero/capabilities` describes these boundaries and the strict flag.
+
+## Image-to-cookbook selection
+
+Only a cookbook's `image_names` chooses its model. Container names and incidental
+substrings never do. An untagged repository entry (for example `nginx`) accepts
+its tags/digests; an explicitly tagged entry matches that reference only. Docker
+Hub short names and `docker.io/library/` names are equivalent; third-party
+namespaces/registries must be registered explicitly. Unknown image inspection
+returns 404, and unregistered container creation fails before allocation.
+
+For a deliberate fixture substitution, use label `docker-zero.cookbook=redis`
+or another registered kind. This explicitly selects the **fixture**, not real
+behavior of the supplied custom image. Image pulls remain metadata-only stream
+responses; they do not download, authenticate, or verify registry contents.
