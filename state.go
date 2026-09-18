@@ -43,6 +43,8 @@ type Container struct {
 	RequestedConfig     *containerConfigRecord
 	RestartPolicy       RestartPolicy
 	HealthcheckDisabled bool
+	manuallyStopped     bool
+	automaticRestarts   int
 
 	Spec     ServiceDefaults
 	Scenario Scenario
@@ -284,11 +286,24 @@ func (c *Container) advance(event string) eventAdvance {
 		if transition.WhenHealth != "" && transition.WhenHealth != c.Health.Status {
 			continue
 		}
-		c.applyPatchLocked(transition.Set)
+		patch := transition.Set
+		automaticRestart := !c.Running && patchStartsContainer(patch) && event != "docker.start" && event != "docker.restart"
+		if automaticRestart {
+			if !c.canRestartAutomaticallyLocked() {
+				continue
+			}
+			c.automaticRestarts++
+			patch.RestartCount = nil
+			patch.RestartCountDelta = 1
+		}
+		c.applyPatchLocked(patch)
 		if transition.Once {
 			c.AppliedTransitions[index] = true
 		}
 		transitionDescription = fmt.Sprintf("transition[%d]", index)
+		if automaticRestart {
+			transitionDescription += ":restart_policy"
+		}
 		// A single external event advances at most one lifecycle edge. This makes
 		// exited -> restarting -> running observable over separate inspections.
 		break
@@ -433,6 +448,8 @@ func (c *Container) start() (ContainerStateSnapshot, ContainerStateSnapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	before := c.stateSnapshotLocked()
+	c.manuallyStopped = false
+	c.automaticRestarts = 0
 	patch := c.startPatchLocked()
 	c.applyPatchLocked(patch)
 	c.StartCount++
@@ -480,12 +497,17 @@ func (c *Container) startPatchLocked() StatePatch {
 }
 
 func (c *Container) stop(exitCode int) (ContainerStateSnapshot, ContainerStateSnapshot) {
-	return c.applyPatch(StatePatch{
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	c.manuallyStopped = true
+	c.applyPatchLocked(StatePatch{
 		Status:     stringPtr("exited"),
 		Running:    boolPtr(false),
 		Restarting: boolPtr(false),
 		ExitCode:   intPtr(exitCode),
 	})
+	return before, c.stateSnapshotLocked()
 }
 
 func (c *Container) pause() (ContainerStateSnapshot, ContainerStateSnapshot, error) {

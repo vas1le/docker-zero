@@ -51,6 +51,7 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(statusCode)
 	case action == "stop" && r.Method == http.MethodPost:
 		before := container.stateSnapshot()
+		container.markManualStop()
 		statusCode := http.StatusNoContent
 		if !before.Running && !before.Restarting {
 			statusCode = http.StatusNotModified
@@ -99,7 +100,7 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusNoContent)
 	case action == "kill" && r.Method == http.MethodPost:
 		before := container.stateSnapshot()
-		if !before.Running || before.Restarting || before.Dead {
+		if !before.Running || before.Dead {
 			writeDockerError(w, http.StatusConflict, "container is not running")
 			return
 		}
