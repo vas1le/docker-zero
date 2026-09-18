@@ -38,17 +38,6 @@ type Volume struct {
 	Scope      string            `json:"Scope"`
 }
 
-type ExecInstance struct {
-	mu sync.Mutex
-
-	ID          string
-	ContainerID string
-	Command     []string
-	Running     bool
-	ExitCode    int
-	Output      string
-}
-
 type Engine struct {
 	mu sync.RWMutex
 
@@ -63,7 +52,6 @@ type Engine struct {
 	names        map[string]string
 	networks     map[string]*Network
 	volumes      map[string]*Volume
-	execs        map[string]*ExecInstance
 	runtimes     map[string]*ContainerRuntime
 	endpointMode string
 
@@ -83,7 +71,6 @@ func newEngine(cookbooks map[string]*Cookbook, seed int, overrides map[string]in
 		names:          make(map[string]string),
 		networks:       make(map[string]*Network),
 		volumes:        make(map[string]*Volume),
-		execs:          make(map[string]*ExecInstance),
 		runtimes:       make(map[string]*ContainerRuntime),
 		endpointMode:   "auto",
 		internalErrors: make(chan error, 4),

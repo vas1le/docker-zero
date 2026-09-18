@@ -188,7 +188,7 @@ Not implemented as real kernel/runtime features:
 
 - namespaces and cgroups;
 - image filesystem execution;
-- process execution inside containers;
+- process execution inside containers (`exec` returns HTTP 501 with the unsupported marker, never a fabricated exit code);
 - a real Docker embedded DNS server at `127.0.0.11`;
 - Redis persistence or Redis wire-level replication;
 - Docker event streaming (`GET /events`);
