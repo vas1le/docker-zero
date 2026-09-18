@@ -229,6 +229,33 @@ class Suite:
         assert status == 200, (status, data)
         return list(json.loads(data)["answers"])
 
+    def test_readme_quickstart(self) -> None:
+        project = "readmeexample"
+        source = Path(__file__).resolve().parent.parent / "compose.yaml"
+        path = self.write_compose(project, source.read_text(encoding="utf-8"))
+        try:
+            self.run_compose(project, path, "up", "-d")
+            self.run_compose(project, path, "ps")
+            for service, private_port in (("web", 80), ("cache", 6379)):
+                items = service_containers(self.socket, project, service)
+                assert len(items) == 1, items
+                document = inspect(self.socket, container_name(items[0]))
+                port = published_port(document, private_port)
+                binding = document["NetworkSettings"]["Ports"][f"{private_port}/tcp"][0]
+                assert binding["HostIp"] == "127.0.0.1", binding
+                address = self.run_compose(project, path, "port", service, str(private_port)).stdout.strip()
+                assert address == f"127.0.0.1:{port}", address
+                assert document["HostConfig"]["RestartPolicy"]["Name"] == "no"
+                if service == "web":
+                    assert http_get(port)[0] == 200
+                else:
+                    assert redis_command(port, "PING") == b"+PONG\r\n"
+            self.run_compose(project, path, "down")
+            assert not project_containers(self.socket, project)
+            print("PASS README quickstart: Compose up/ps/port, HTTP/RESP, down cleanup")
+        finally:
+            self.down(project, path)
+
     def test_scale_distinct_ips_and_dns(self) -> None:
         project = "toposcale"
         path = self.write_compose(project, """services:\n  nginx:\n    image: nginx:alpine\n""")
@@ -525,6 +552,7 @@ def main() -> None:
 
     suite = Suite(engine, compose)
     try:
+        suite.test_readme_quickstart()
         suite.test_scale_distinct_ips_and_dns()
         suite.test_ephemeral_ports_route_per_replica()
         suite.test_fixed_port_conflicts()
