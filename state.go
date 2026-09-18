@@ -28,6 +28,9 @@ type HealthLog struct {
 type Container struct {
 	mu sync.Mutex
 
+	waiters map[*containerWaiter]struct{}
+	removed bool
+
 	ID       string
 	Name     string
 	Image    string
@@ -394,6 +397,9 @@ func (c *Container) applyPatchLocked(patch StatePatch) {
 	}
 	if c.Status == "created" {
 		c.Pid = 0
+	}
+	if c.Status != oldStatus && (c.Status == "exited" || c.Status == "dead" || c.Status == "restarting") {
+		c.notifyWaitersLocked(false)
 	}
 	if c.Health.Status != oldHealth && c.Health.Status != "" {
 		exitCode := 0

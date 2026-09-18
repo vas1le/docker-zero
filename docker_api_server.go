@@ -26,6 +26,11 @@ type dockerResponseRecorder struct {
 	bytes  int
 }
 
+// Unwrap preserves streaming interfaces through the request ledger recorder.
+func (r *dockerResponseRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 func (r *dockerResponseRecorder) WriteHeader(status int) {
 	if r.status != 0 {
 		return
