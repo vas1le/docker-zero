@@ -75,7 +75,8 @@ Start the healthy baseline:
   --ledger-dir ./runs
 ```
 
-Point a Docker client or orchestrator at it:
+In another terminal, from the repository root, point a Docker client or
+orchestrator at it (Docker CLI and the Compose plugin must be installed):
 
 ```bash
 export DOCKER_HOST=unix:///tmp/docker-zero.sock
@@ -86,7 +87,14 @@ For example:
 ```bash
 docker compose up -d
 docker compose ps
+curl "http://$(docker compose port web 80)/health"
+docker compose down
+unset DOCKER_HOST
 ```
+
+The included `compose.yaml` starts one Nginx fixture and one Redis fixture with
+ephemeral loopback ports, so no fixed port is required. `down` removes the demo
+resources; the simulator remains running until stopped in its terminal.
 
 Compose itself is not reimplemented. The real Docker Compose client parses `compose.yaml` and calls the mock Docker Engine API.
 
