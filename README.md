@@ -227,6 +227,21 @@ is stored, but `State.Health` is omitted because it was not executed. A `NONE`
 healthcheck disables health reporting; omitted/null healthchecks inherit the
 cookbook fixture. Omitted restart policy defaults to `no`.
 
+## Restart policy and recovery tests
+
+The default/`no` policy leaves a crashed container exited until an explicit
+start or restart. Seeded automatic recovery requires `always`, `unless-stopped`,
+or `on-failure`; the latter only retries nonzero exits and enforces a nonzero
+`MaximumRetryCount`. Manual stop/kill suppress automatic recovery until another
+explicit start/restart. Explicit starts reset the retry budget, not the total
+restart count.
+
+Recovery timing is still **observation-driven fixture timing**: eligible cookbook
+edges advance on inspect/list requests. This is not Docker's real-time backoff,
+success-duration reset, or daemon-restart/persistence behavior. To test controller
+recovery, use policy `no` and assert the controller's actual restart/rollback calls
+in the ledger; do not count policy-driven fixture recovery as controller success.
+
 ## Current scope
 
 `docker-zero` is not a general-purpose container runtime and does not aim to implement every Docker feature.

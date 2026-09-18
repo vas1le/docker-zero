@@ -51,6 +51,7 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.start", advance, nil, map[string]any{"status": statusCode})
 		w.WriteHeader(statusCode)
 	case action == "stop" && r.Method == http.MethodPost:
+		container.suppressAutomaticRestart()
 		before := container.stateSnapshot()
 		statusCode := http.StatusNoContent
 		if !before.Running && !before.Restarting {

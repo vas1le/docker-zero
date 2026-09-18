@@ -168,9 +168,6 @@ func (c *Container) captureCreateMetadata(request *createContainerRequest) {
 		metadata.hostConfig[field] = slices.Clone(raw)
 	}
 	c.RestartPolicy = request.HostConfig.RestartPolicy
-	if c.RestartPolicy.Name != "no" && c.RestartPolicy.Name != "" {
-		metadata.metadataOnly = append(metadata.metadataOnly, "HostConfig.RestartPolicy")
-	}
 	slices.Sort(metadata.metadataOnly)
 	c.createMetadata = metadata
 	c.ExposedPorts = make(map[string]any, len(request.ExposedPorts))

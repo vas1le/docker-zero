@@ -28,8 +28,10 @@ type HealthLog struct {
 type Container struct {
 	mu sync.Mutex
 
-	waiters map[*containerWaiter]struct{}
-	removed bool
+	waiters             map[*containerWaiter]struct{}
+	removed             bool
+	restartSuppressed   bool
+	autoRestartAttempts int
 
 	createMetadata containerCreateMetadata
 	RestartPolicy  RestartPolicy
@@ -285,7 +287,18 @@ func (c *Container) advance(event string) eventAdvance {
 		if transition.WhenHealth != "" && transition.WhenHealth != c.Health.Status {
 			continue
 		}
-		c.applyPatchLocked(transition.Set)
+		patch := transition.Set
+		// Cookbook recovery edges must respect the requested policy. Observing
+		// a stopped service is not itself a controller restart action.
+		if !c.Running && patchStartsContainer(patch) {
+			if !c.automaticRestartAllowedLocked() {
+				continue
+			}
+			c.autoRestartAttempts++
+			patch.RestartCount = nil
+			patch.RestartCountDelta = 1
+		}
+		c.applyPatchLocked(patch)
 		if transition.Once {
 			c.AppliedTransitions[index] = true
 		}
@@ -431,6 +444,8 @@ func (c *Container) start() (ContainerStateSnapshot, ContainerStateSnapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	before := c.stateSnapshotLocked()
+	c.restartSuppressed = false
+	c.autoRestartAttempts = 0
 	patch := c.startPatchLocked()
 	c.applyPatchLocked(patch)
 	c.StartCount++
@@ -478,12 +493,17 @@ func (c *Container) startPatchLocked() StatePatch {
 }
 
 func (c *Container) stop(exitCode int) (ContainerStateSnapshot, ContainerStateSnapshot) {
-	return c.applyPatch(StatePatch{
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	c.restartSuppressed = true
+	c.applyPatchLocked(StatePatch{
 		Status:     stringPtr("exited"),
 		Running:    boolPtr(false),
 		Restarting: boolPtr(false),
 		ExitCode:   intPtr(exitCode),
 	})
+	return before, c.stateSnapshotLocked()
 }
 
 func (c *Container) pause() (ContainerStateSnapshot, ContainerStateSnapshot, error) {
@@ -517,7 +537,12 @@ func (c *Container) unpause() (ContainerStateSnapshot, ContainerStateSnapshot, e
 }
 
 func (c *Container) restart() (ContainerStateSnapshot, ContainerStateSnapshot) {
-	return c.applyPatch(StatePatch{
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	c.restartSuppressed = false
+	c.autoRestartAttempts = 0
+	c.applyPatchLocked(StatePatch{
 		Status:            stringPtr("restarting"),
 		Running:           boolPtr(true),
 		Restarting:        boolPtr(true),
@@ -525,6 +550,7 @@ func (c *Container) restart() (ContainerStateSnapshot, ContainerStateSnapshot) {
 		ExitCode:          intPtr(0),
 		RestartCountDelta: 1,
 	})
+	return before, c.stateSnapshotLocked()
 }
 
 func (c *Container) eventCount(event string) int {
