@@ -76,25 +76,13 @@ func (api *DockerAPI) handleExecAction(w http.ResponseWriter, r *http.Request, r
 	container, _ := api.engine.findContainer(exec.ContainerID)
 	switch {
 	case action == "start" && r.Method == http.MethodPost:
-		exec.mu.Lock()
-		exec.Running = false
-		output := exec.Output
-		command := append([]string(nil), exec.Command...)
-		exitCode := exec.ExitCode
-		exec.mu.Unlock()
-		if container != nil {
-			container.appendLog(output)
-			api.engine.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "exec.start", Request: map[string]any{"id": id, "cmd": command}, Response: map[string]any{"exit_code": exitCode}})
-		}
-		w.Header().Set("Content-Type", "application/vnd.docker.raw-stream")
-		w.WriteHeader(http.StatusOK)
-		writeDockerStreamFrame(w, 1, []byte(output))
+		api.handleExecStart(w, r, exec, container)
 	case action == "json" && r.Method == http.MethodGet:
 		exec.mu.Lock()
 		doc := map[string]any{
 			"CanRemove": false, "DetachKeys": "", "ID": exec.ID, "Running": exec.Running,
-			"ExitCode": exec.ExitCode, "ProcessConfig": map[string]any{"entrypoint": "", "arguments": append([]string(nil), exec.Command...), "privileged": false, "tty": false, "user": ""},
-			"OpenStdin": false, "OpenStderr": true, "OpenStdout": true, "ContainerID": exec.ContainerID, "Pid": 0,
+			"ExitCode": exec.ExitCode, "ProcessConfig": map[string]any{"entrypoint": firstOrEmpty(exec.Command), "arguments": restOrEmpty(exec.Command), "privileged": false, "tty": false, "user": ""},
+			"OpenStdin": false, "OpenStderr": exec.AttachStderr, "OpenStdout": exec.AttachStdout, "ContainerID": exec.ContainerID, "Pid": 0,
 		}
 		exec.mu.Unlock()
 		writeJSON(w, http.StatusOK, doc)

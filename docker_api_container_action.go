@@ -120,22 +120,7 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.top", advance, nil, nil)
 		writeJSON(w, http.StatusOK, map[string]any{"Titles": []string{"UID", "PID", "PPID", "C", "STIME", "TTY", "TIME", "CMD"}, "Processes": [][]string{}})
 	case action == "exec" && r.Method == http.MethodPost:
-		container.mu.Lock()
-		paused := container.Paused
-		container.mu.Unlock()
-		if paused {
-			writeDockerError(w, http.StatusConflict, "container is paused, unpause the container before exec")
-			return
-		}
-		var request struct {
-			Cmd []string `json:"Cmd"`
-		}
-		if err := decodeJSON(r.Body, &request); err != nil {
-			writeDockerError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		exec := api.engine.createExec(container, request.Cmd)
-		writeJSON(w, http.StatusCreated, map[string]any{"Id": exec.ID})
+		api.handleExecCreate(w, r, container)
 	case action == "archive" && (r.Method == http.MethodPut || r.Method == http.MethodHead):
 		advance := container.advance("docker.archive")
 		_, _ = io.Copy(io.Discard, r.Body)

@@ -41,12 +41,17 @@ type Volume struct {
 type ExecInstance struct {
 	mu sync.Mutex
 
-	ID          string
-	ContainerID string
-	Command     []string
-	Running     bool
-	ExitCode    int
-	Output      string
+	ID              string
+	ContainerID     string
+	Command         []string
+	Running         bool
+	ExitCode        *int
+	Output          string
+	Stderr          string
+	FixtureExitCode int
+	AttachStdout    bool
+	AttachStderr    bool
+	Started         bool
 }
 
 type Engine struct {
