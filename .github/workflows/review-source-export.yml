@@ -1,0 +1,21 @@
+name: Temporary review source export
+on:
+  push:
+    branches: [workbench/review-source-export]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 189b479c9f430f81b7401d2efebd462869897a53
+      - name: Export pinned source only
+        run: git archive --format=tar HEAD > /tmp/docker-zero-source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-zero-review-source
+          path: /tmp/docker-zero-source.tar
+          retention-days: 1
+          if-no-files-found: error
