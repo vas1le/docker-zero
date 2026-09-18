@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"runtime"
-	"strconv"
 	"strings"
 )
 
@@ -24,10 +23,10 @@ func writeDockerStreamFrame(w io.Writer, stream byte, payload []byte) {
 }
 
 func stripAPIVersion(path string) string {
-	parts := strings.Split(path, "/")
-	if len(parts) > 2 && len(parts[1]) >= 3 && parts[1][0] == 'v' && strings.Contains(parts[1], ".") {
-		if _, err := strconv.ParseFloat(parts[1][1:], 64); err == nil {
-			return "/" + strings.Join(parts[2:], "/")
+	version, rest, present := apiVersionPrefix(path)
+	if present {
+		if _, _, err := parseDockerVersion(version); err == nil {
+			return rest
 		}
 	}
 	return path

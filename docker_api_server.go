@@ -26,6 +26,11 @@ type dockerResponseRecorder struct {
 	bytes  int
 }
 
+// Unwrap preserves streaming interfaces through the request ledger recorder.
+func (r *dockerResponseRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 func (r *dockerResponseRecorder) WriteHeader(status int) {
 	if r.status != 0 {
 		return
@@ -74,6 +79,11 @@ func (api *DockerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Docker-Experimental", "false")
 	w.Header().Set("Ostype", "linux")
 	w.Header().Set("X-Docker-Zero-Version", version)
+
+	if err := validateAPIVersion(r.URL.Path); err != nil {
+		writeDockerError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	if path == "/_ping" {
 		api.handlePing(w, r)

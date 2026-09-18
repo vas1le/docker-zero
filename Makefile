@@ -87,7 +87,7 @@ verify: fmt-check lint test race vet pycheck integration doctor matrix-smoke mat
 retest: verify test-repeat race-repeat integration-retest fuzz-smoke
 
 checksums: build-all
-	sha256sum $(BINARY) $(ARM64_BINARY) > dist/SHA256SUMS
+	cd dist && sha256sum $(notdir $(BINARY)) $(notdir $(ARM64_BINARY)) > SHA256SUMS
 
 release: verify compose-topology checksums
 

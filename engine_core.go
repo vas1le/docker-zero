@@ -38,17 +38,6 @@ type Volume struct {
 	Scope      string            `json:"Scope"`
 }
 
-type ExecInstance struct {
-	mu sync.Mutex
-
-	ID          string
-	ContainerID string
-	Command     []string
-	Running     bool
-	ExitCode    int
-	Output      string
-}
-
 type Engine struct {
 	mu sync.RWMutex
 
@@ -115,24 +104,30 @@ func (e *Engine) seedFor(kind, name string) int {
 }
 
 func (e *Engine) cookbookFor(name, image string) (*Cookbook, error) {
-	nameLower := strings.ToLower(name)
-	imageLower := strings.ToLower(image)
+	var selected *Cookbook
+	best := 0
+	ambiguous := false
 	for _, kind := range sortedCookbookKinds(e.cookbooks) {
 		cb := e.cookbooks[kind]
-		if strings.Contains(nameLower, strings.ToLower(cb.Kind)) {
-			return cb, nil
-		}
 		for _, candidate := range cb.ImageNames {
-			candidate = strings.ToLower(candidate)
-			if imageLower == candidate || strings.HasPrefix(imageLower, candidate+":") || strings.Contains(imageLower, candidate) {
-				return cb, nil
+			score := imageMatchScore(candidate, image)
+			if score > best {
+				selected, best, ambiguous = cb, score, false
+			} else if score > 0 && score == best && selected != cb {
+				ambiguous = true
 			}
 		}
 	}
-	return nil, fmt.Errorf("no cookbook matches name=%q image=%q", name, image)
+	if ambiguous {
+		return nil, fmt.Errorf("ambiguous cookbook image mapping for %q", image)
+	}
+	if selected != nil {
+		return selected, nil
+	}
+	return nil, fmt.Errorf("no cookbook matches image=%q (container name %q is not an image mapping)", image, name)
 }
 
-func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string) (*Container, error) {
+func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string, config ...*createContainerRequest) (*Container, error) {
 	name = strings.TrimPrefix(strings.TrimSpace(name), "/")
 	if name == "" {
 		name = fmt.Sprintf("docker-zero-%d", e.counter.Add(1))
@@ -162,6 +157,9 @@ func (e *Engine) createContainer(name, image string, labels map[string]string, e
 	container.Labels = cloneStringMap(labels)
 	container.Env = append([]string(nil), env...)
 	container.Command = append([]string(nil), command...)
+	if len(config) != 0 && config[0] != nil {
+		container.captureCreateMetadata(config[0])
+	}
 	e.containers[id] = container
 	e.names[name] = id
 	e.mu.Unlock()
@@ -271,6 +269,7 @@ func (e *Engine) removeContainer(ref string, force bool) error {
 	}
 	e.mu.Unlock()
 	before := container.stateSnapshot()
+	container.markRemoved()
 	e.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.remove", Before: &before})
 	return nil
 }

@@ -1,0 +1,11 @@
+# Test fixtures only: docker-zero does not execute these container images.
+name: docker-zero-demo
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1::80"
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1::6379"

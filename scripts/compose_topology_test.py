@@ -229,6 +229,26 @@ class Suite:
         assert status == 200, (status, data)
         return list(json.loads(data)["answers"])
 
+    def test_repository_quick_start(self) -> None:
+        project = "topoquickstart"
+        source = Path(__file__).resolve().parents[1] / "compose.yaml"
+        path = self.write_compose(project, source.read_text(encoding="utf-8"))
+        try:
+            self.run_compose(project, path, "up", "-d")
+            web = service_containers(self.socket, project, "web")
+            redis = service_containers(self.socket, project, "redis")
+            assert len(web) == 1 and len(redis) == 1, (web, redis)
+            published = self.run_compose(project, path, "port", "web", "80").stdout.strip()
+            port = int(published.rsplit(":", 1)[1])
+            assert http_get(port)[0] == 200
+            self.run_compose(project, path, "ps")
+            self.run_compose(project, path, "down")
+            assert not service_containers(self.socket, project, "web")
+            assert not service_containers(self.socket, project, "redis")
+            print("PASS repository quick start: up, ps, port, health request, down")
+        finally:
+            self.down(project, path)
+
     def test_scale_distinct_ips_and_dns(self) -> None:
         project = "toposcale"
         path = self.write_compose(project, """services:\n  nginx:\n    image: nginx:alpine\n""")
@@ -525,6 +545,7 @@ def main() -> None:
 
     suite = Suite(engine, compose)
     try:
+        suite.test_repository_quick_start()
         suite.test_scale_distinct_ips_and_dns()
         suite.test_ephemeral_ports_route_per_replica()
         suite.test_fixed_port_conflicts()

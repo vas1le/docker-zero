@@ -75,7 +75,8 @@ Start the healthy baseline:
   --ledger-dir ./runs
 ```
 
-Point a Docker client or orchestrator at it:
+In another terminal, from the repository root, point a Docker client or
+orchestrator at it (Docker CLI and the Compose plugin must be installed):
 
 ```bash
 export DOCKER_HOST=unix:///tmp/docker-zero.sock
@@ -86,11 +87,41 @@ For example:
 ```bash
 docker compose up -d
 docker compose ps
+curl "http://$(docker compose port web 80)/health"
+docker compose down
+unset DOCKER_HOST
 ```
+
+The included `compose.yaml` starts one Nginx fixture and one Redis fixture with
+ephemeral loopback ports, so no fixed port is required. `down` removes the demo
+resources; the simulator remains running until stopped in its terminal.
 
 Compose itself is not reimplemented. The real Docker Compose client parses `compose.yaml` and calls the mock Docker Engine API.
 
 `--container-endpoints auto` is the default. In this mode docker-zero attempts direct virtual container-IP listeners where the host permits them and still provides published-port listeners. `--container-endpoints on` is strict: if a virtual endpoint cannot bind, startup fails. On Linux, strict emulation of container ports below 1024 requires the host to allow unprivileged low-port binding or the process to have the corresponding privilege/capability.
+
+Archive upload, download and stat (`PUT`/`GET`/`HEAD /containers/{id}/archive`)
+are explicitly unsupported (HTTP 501 with the unsupported marker). Volume metadata
+is not a container filesystem, and `docker cp` cannot be validated by this simulator.
+
+## Exec fixtures
+
+Exec never runs a host process. By default, commands are rejected with HTTP 501
+and `X-Docker-Zero-Unsupported: true`, rather than returning a fabricated exit 0.
+An external cookbook can declare exact argument-vector matches in each seed:
+
+```json
+"exec": [
+  {"cmd": ["sh", "-c", "exit 42"], "stdout": "", "stderr": "migration failed\n", "exit_code": 42}
+]
+```
+
+Fixture results complete synchronously on exec start. Attached stdout and stderr
+use separate Docker stream frames; inspect reports the configured exit code.
+Detached start returns no output. Exec requires a running, unpaused container at
+both create and start, and an instance can only run once. TTY, stdin, environment,
+user, working-directory and privileged exec options are explicitly unsupported.
+These fixtures test a controller's handling of an outcome, not the command itself.
 
 ## Scenarios
 
@@ -179,6 +210,53 @@ tag:     v0.4.2
 ```
 
 The release workflow rejects a tag that does not match `VERSION`, then runs validation and builds static Linux `amd64` and `arm64` binaries with SHA-256 checksums.
+
+## Image-to-service matching
+
+Cookbook `image_names` select services by image repository, never by container
+name or substring. For example, `redis` covers its tags and digests and the
+`docker.io/library/redis` alias, but not `myorg/redis` or `notredis`. Register
+private image repositories explicitly. A tagged/digest mapping takes precedence
+over a bare repository mapping; equally specific mappings to different cookbooks
+are rejected as ambiguous.
+
+## Container configuration fidelity
+
+Create requests retain user, working directory, entrypoint, healthcheck, restart
+policy, and additional configuration for inspection. Meaningful settings that the
+simulator cannot execute (such as filesystem mounts, resource limits, or a custom
+health command) return a create warning and `X-Docker-Zero-Unsupported: true`, even
+when the metadata is accepted with HTTP 201. Inspect repeats the marker and lists
+these fields under `DockerZero.MetadataOnly`. The matrix runner classifies such a
+run as **mock_incomplete**, not a passing compatibility test.
+
+A custom healthcheck is never replaced by the built-in healthy result: its command
+is stored, but `State.Health` is omitted because it was not executed. A `NONE`
+healthcheck disables health reporting; omitted/null healthchecks inherit the
+cookbook fixture. Omitted restart policy defaults to `no`.
+
+Kill requests on inactive containers return HTTP 409 without changing their exit
+code. Only default/`KILL`/`SIGKILL`/`9` is simulated; other signal requests return
+HTTP 501 with the unsupported marker rather than being silently turned into kills.
+
+## Restart policy and recovery tests
+
+The default/`no` policy leaves a crashed container exited until an explicit
+start or restart. Seeded automatic recovery requires `always`, `unless-stopped`,
+or `on-failure`; the latter only retries nonzero exits and enforces a nonzero
+`MaximumRetryCount`. Manual stop/kill suppress automatic recovery until another
+explicit start/restart. Explicit starts reset the retry budget, not the total
+restart count.
+
+Recovery timing is still **observation-driven fixture timing**: eligible cookbook
+edges advance on inspect/list requests. This is not Docker's real-time backoff,
+success-duration reset, or daemon-restart/persistence behavior. To test controller
+recovery, use policy `no` and assert the controller's actual restart/rollback calls
+in the ledger; do not count policy-driven fixture recovery as controller success.
+
+Requests with version prefixes outside the advertised API range (`1.24`–`1.43`)
+are rejected with HTTP 400 before dispatch. Unversioned discovery requests remain
+supported; the advertised range is not a claim of complete Engine API coverage.
 
 ## Current scope
 

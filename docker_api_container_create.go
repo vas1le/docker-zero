@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -8,15 +9,22 @@ import (
 )
 
 type createContainerRequest struct {
-	Hostname     string            `json:"Hostname"`
-	Image        string            `json:"Image"`
-	Cmd          []string          `json:"Cmd"`
-	Env          []string          `json:"Env"`
-	Labels       map[string]string `json:"Labels"`
-	ExposedPorts map[string]any    `json:"ExposedPorts"`
-	HostConfig   struct {
-		NetworkMode  string `json:"NetworkMode"`
-		PortBindings map[string][]struct {
+	rawConfig     map[string]json.RawMessage
+	rawHostConfig map[string]json.RawMessage
+	User          string             `json:"User"`
+	WorkingDir    string             `json:"WorkingDir"`
+	Entrypoint    []string           `json:"Entrypoint"`
+	Healthcheck   *HealthcheckConfig `json:"Healthcheck"`
+	Hostname      string             `json:"Hostname"`
+	Image         string             `json:"Image"`
+	Cmd           []string           `json:"Cmd"`
+	Env           []string           `json:"Env"`
+	Labels        map[string]string  `json:"Labels"`
+	ExposedPorts  map[string]any     `json:"ExposedPorts"`
+	HostConfig    struct {
+		RestartPolicy RestartPolicy `json:"RestartPolicy"`
+		NetworkMode   string        `json:"NetworkMode"`
+		PortBindings  map[string][]struct {
 			HostIP   string `json:"HostIp"`
 			HostPort string `json:"HostPort"`
 		} `json:"PortBindings"`
@@ -69,8 +77,12 @@ func (api *DockerAPI) handleContainerCreate(w http.ResponseWriter, r *http.Reque
 		writeDockerError(w, http.StatusBadRequest, "invalid container config: "+err.Error())
 		return
 	}
+	if err := request.validateMetadata(); err != nil {
+		writeDockerError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	name := r.URL.Query().Get("name")
-	container, err := api.engine.createContainer(name, request.Image, request.Labels, request.Env, request.Cmd)
+	container, err := api.engine.createContainer(name, request.Image, request.Labels, request.Env, request.Cmd, &request)
 	if err == nil {
 		if bindingErr := configureContainerPortBindings(container, request.HostConfig.PortBindings); bindingErr != nil {
 			_ = api.engine.removeContainer(container.ID, true)
@@ -95,7 +107,7 @@ func (api *DockerAPI) handleContainerCreate(w http.ResponseWriter, r *http.Reque
 		writeDockerError(w, status, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"Id": container.ID, "Warnings": []string{}})
+	writeJSON(w, http.StatusCreated, map[string]any{"Id": container.ID, "Warnings": container.metadataWarnings(w)})
 }
 
 func (api *DockerAPI) handleContainerList(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +129,7 @@ func (api *DockerAPI) handleContainerList(w http.ResponseWriter, r *http.Request
 		if !containerMatchesFilters(container, filters) {
 			continue
 		}
+		container.metadataWarnings(w)
 		response = append(response, containerListDocument(container, api.engine.containerNetworkEndpoints(container)))
 	}
 	writeJSON(w, http.StatusOK, response)

@@ -153,11 +153,14 @@ def check_seed(binary: str, seed: int) -> None:
             assert http_get("127.0.0.1", engine.nginx_port, "/health")[0] == 200
             expect_http_drop("127.0.0.1", engine.nginx_port, "/health")
             nginx_states = [inspect(engine.socket_path, "nginx-zero") for _ in range(3)]
-            assert [(item["State"]["Status"], item["State"]["Health"]["Status"]) for item in nginx_states] == [
-                ("restarting", "starting"),
-                ("running", "starting"),
-                ("running", "healthy"),
-            ]
+            assert all(item["State"]["Status"] == "exited" and item["State"]["ExitCode"] == 137 for item in nginx_states), nginx_states
+            # Bootstrap uses the default no-restart policy: polling must not
+            # masquerade as a controller recovery action.
+            status, data, _ = docker_request(engine.socket_path, "POST", "/v1.43/containers/nginx-zero/restart")
+            assert status == 204, (status, data)
+            recovered = inspect(engine.socket_path, "nginx-zero")
+            assert recovered["State"]["Status"] == "running", recovered
+            assert recovered["RestartCount"] == 1, recovered
             reply, connection = redis_command("127.0.0.1", engine.redis_port, "PING")
             connection.close()
             assert reply == b"+PONG\r\n", reply
@@ -165,11 +168,14 @@ def check_seed(binary: str, seed: int) -> None:
             connection.close()
             assert reply == b"", reply
             redis_states = [inspect(engine.socket_path, "redis-zero") for _ in range(3)]
-            assert [(item["State"]["Status"], item["State"]["Health"]["Status"]) for item in redis_states] == [
-                ("restarting", "starting"),
-                ("running", "starting"),
-                ("running", "healthy"),
-            ]
+            assert all(item["State"]["Status"] == "exited" and item["State"]["ExitCode"] == 137 for item in redis_states), redis_states
+            # Bootstrap uses the default no-restart policy: polling must not
+            # masquerade as a controller recovery action.
+            status, data, _ = docker_request(engine.socket_path, "POST", "/v1.43/containers/redis-zero/restart")
+            assert status == 204, (status, data)
+            recovered = inspect(engine.socket_path, "redis-zero")
+            assert recovered["State"]["Status"] == "running", recovered
+            assert recovered["RestartCount"] == 1, recovered
         assert_ledgers(engine, {"nginx-zero": seed, "redis-zero": seed})
 
 

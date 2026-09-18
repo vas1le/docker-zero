@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,6 +30,7 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.syncRuntimeForState(container)
 		doc := containerInspectDocument(container, api.engine.containerNetworkEndpoints(container))
 		api.engine.logContainerEvent(container, "container.inspect", advance, nil, map[string]any{"status": doc["State"].(map[string]any)["Status"]})
+		container.metadataWarnings(w)
 		writeJSON(w, http.StatusOK, doc)
 	case action == "start" && r.Method == http.MethodPost:
 		before := container.stateSnapshot()
@@ -51,6 +51,7 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.start", advance, nil, map[string]any{"status": statusCode})
 		w.WriteHeader(statusCode)
 	case action == "stop" && r.Method == http.MethodPost:
+		container.suppressAutomaticRestart()
 		before := container.stateSnapshot()
 		statusCode := http.StatusNoContent
 		if !before.Running && !before.Restarting {
@@ -100,6 +101,16 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusNoContent)
 	case action == "kill" && r.Method == http.MethodPost:
 		before := container.stateSnapshot()
+		if !before.Running || before.Dead {
+			writeDockerError(w, http.StatusConflict, "container is not running")
+			return
+		}
+		switch r.URL.Query().Get("signal") {
+		case "", "KILL", "SIGKILL", "9":
+		default:
+			writeUnsupportedDockerError(w, http.StatusNotImplemented, "only SIGKILL is simulated; signal handlers require an explicit fixture")
+			return
+		}
 		_ = api.engine.stopContainerRuntime(container)
 		container.stop(137)
 		advance := container.advance("docker.kill")
@@ -107,10 +118,7 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.kill", advance, nil, nil)
 		w.WriteHeader(http.StatusNoContent)
 	case action == "wait" && r.Method == http.MethodPost:
-		advance := container.advance("docker.wait")
-		state := container.stateSnapshot()
-		api.engine.logContainerEvent(container, "container.wait", advance, nil, map[string]any{"StatusCode": state.ExitCode})
-		writeJSON(w, http.StatusOK, map[string]any{"StatusCode": state.ExitCode, "Error": nil})
+		api.handleContainerWait(w, r, container)
 	case action == "logs" && r.Method == http.MethodGet:
 		advance := container.advance("docker.logs")
 		logs := container.allLogs()
@@ -123,27 +131,9 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.top", advance, nil, nil)
 		writeJSON(w, http.StatusOK, map[string]any{"Titles": []string{"UID", "PID", "PPID", "C", "STIME", "TTY", "TIME", "CMD"}, "Processes": [][]string{}})
 	case action == "exec" && r.Method == http.MethodPost:
-		container.mu.Lock()
-		paused := container.Paused
-		container.mu.Unlock()
-		if paused {
-			writeDockerError(w, http.StatusConflict, "container is paused, unpause the container before exec")
-			return
-		}
-		var request struct {
-			Cmd []string `json:"Cmd"`
-		}
-		if err := decodeJSON(r.Body, &request); err != nil {
-			writeDockerError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		exec := api.engine.createExec(container, request.Cmd)
-		writeJSON(w, http.StatusCreated, map[string]any{"Id": exec.ID})
-	case action == "archive" && (r.Method == http.MethodPut || r.Method == http.MethodHead):
-		advance := container.advance("docker.archive")
-		_, _ = io.Copy(io.Discard, r.Body)
-		api.engine.logContainerEvent(container, "container.archive", advance, map[string]any{"path": r.URL.Query().Get("path")}, nil)
-		w.WriteHeader(http.StatusOK)
+		api.handleExecCreate(w, r, container)
+	case action == "archive" && (r.Method == http.MethodPut || r.Method == http.MethodHead || r.Method == http.MethodGet):
+		writeUnsupportedDockerError(w, http.StatusNotImplemented, "container filesystems and archive copy/stat operations are not simulated")
 	case action == "json" && r.Method == http.MethodDelete:
 		fallthrough
 	case len(parts) == 1 && r.Method == http.MethodDelete:
