@@ -101,6 +101,16 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusNoContent)
 	case action == "kill" && r.Method == http.MethodPost:
 		before := container.stateSnapshot()
+		if !before.Running || before.Dead {
+			writeDockerError(w, http.StatusConflict, "container is not running")
+			return
+		}
+		switch r.URL.Query().Get("signal") {
+		case "", "KILL", "SIGKILL", "9":
+		default:
+			writeUnsupportedDockerError(w, http.StatusNotImplemented, "only SIGKILL is simulated; signal handlers require an explicit fixture")
+			return
+		}
 		_ = api.engine.stopContainerRuntime(container)
 		container.stop(137)
 		advance := container.advance("docker.kill")

@@ -227,6 +227,10 @@ is stored, but `State.Health` is omitted because it was not executed. A `NONE`
 healthcheck disables health reporting; omitted/null healthchecks inherit the
 cookbook fixture. Omitted restart policy defaults to `no`.
 
+Kill requests on inactive containers return HTTP 409 without changing their exit
+code. Only default/`KILL`/`SIGKILL`/`9` is simulated; other signal requests return
+HTTP 501 with the unsupported marker rather than being silently turned into kills.
+
 ## Restart policy and recovery tests
 
 The default/`no` policy leaves a crashed container exited until an explicit
