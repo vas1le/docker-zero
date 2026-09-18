@@ -28,6 +28,9 @@ type HealthLog struct {
 type Container struct {
 	mu sync.Mutex
 
+	waiters map[*containerWaiter]struct{}
+	removed bool
+
 	ID       string
 	Name     string
 	Image    string
@@ -313,6 +316,7 @@ func (c *Container) applyPatch(patch StatePatch) (ContainerStateSnapshot, Contai
 
 func (c *Container) applyPatchLocked(patch StatePatch) {
 	oldStatus := c.Status
+	oldRunning := c.Running
 	oldHealth := c.Health.Status
 
 	if patch.Status != nil {
@@ -374,6 +378,12 @@ func (c *Container) applyPatchLocked(patch StatePatch) {
 		c.Dead = true
 	default:
 		panic(fmt.Sprintf("internal invalid container status %q", c.Status))
+	}
+
+	// A running process entering a terminal or restarting state has exited.
+	// Starting an already stopped container must not fabricate a new exit.
+	if oldRunning && c.Status != oldStatus && (c.Status == "exited" || c.Status == "dead" || c.Status == "restarting") {
+		c.notifyWaitersLocked(false)
 	}
 
 	now := time.Now().UTC()
