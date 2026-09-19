@@ -75,34 +75,53 @@ Start the healthy baseline:
   --ledger-dir ./runs
 ```
 
-Point a Docker client or orchestrator at it:
+In a second terminal, from the repository root, run the included `compose.yaml`.
+It creates an Nginx HTTP fixture and a Redis fixture; no real containers run.
+A Docker CLI with the Compose plugin is required, but no Docker daemon is needed.
+Scope `DOCKER_HOST` to each command so this demo cannot target your real daemon:
 
 ```bash
-export DOCKER_HOST=unix:///tmp/docker-zero.sock
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -p docker-zero-demo up -d
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -p docker-zero-demo ps
+curl --fail http://127.0.0.1:18080/health
+# Optional, when redis-cli is installed:
+redis-cli -h 127.0.0.1 -p 16379 PING
+DOCKER_HOST=unix:///tmp/docker-zero.sock docker compose -p docker-zero-demo down
 ```
 
-For example:
-
-```bash
-docker compose up -d
-docker compose ps
-```
-
-Compose itself is not reimplemented. The real Docker Compose client parses `compose.yaml` and calls the mock Docker Engine API.
+The ports bind only to `127.0.0.1`. If either is occupied, set
+`DOCKER_ZERO_HTTP_PORT` and/or `DOCKER_ZERO_REDIS_PORT` in that terminal before
+running Compose, and use those ports in the probe commands. Stop the fixture
+engine with Ctrl-C when finished. Compose itself is not reimplemented: the real
+Compose client parses the file and calls the mock Docker Engine API. The
+`make compose-topology` suite exercises this exact example as well.
 
 `--container-endpoints auto` is the default. In this mode docker-zero attempts direct virtual container-IP listeners where the host permits them and still provides published-port listeners. `--container-endpoints on` is strict: if a virtual endpoint cannot bind, startup fails. On Linux, strict emulation of container ports below 1024 requires the host to allow unprivileged low-port binding or the process to have the corresponding privilege/capability.
 
 ## Scenarios
 
 Cookbooks live under `cookbooks/` and define deterministic behavior for a service type.
+Their `image_names` entries match exact image repositories (all tags/digests) or
+explicit tag/digest references. Container names never select a service model.
+Private or custom image names require an explicit `image_names` entry; substring
+matches such as `company/not-nginx` are deliberately rejected.
 
 The shipped convention is:
 
 ```text
 seed 0 = healthy baseline
 seed 1 = transient failure / recovery
-seed 2 = crash / restart path
+seed 2 = crash / policy-controlled restart path
 ```
+
+After a seed-2 crash, the default policy `no` leaves the container exited until
+an explicit start/restart request. To test a **daemon-policy fixture**, request
+`HostConfig.RestartPolicy.Name: "always"`, `"unless-stopped"`, or `"on-failure"`.
+Inspect/list calls can step that permitted automatic restart; this does not prove
+that a deployment controller issued a recovery action. `on-failure` respects
+nonzero exit status and `MaximumRetryCount`. Manual stop/kill suppresses automatic
+recovery until an explicit start/restart. Timing/backoff and daemon-reboot policy
+semantics are not emulated.
 
 Run one global scenario:
 
@@ -182,18 +201,37 @@ The release workflow rejects a tag that does not match `VERSION`, then runs vali
 
 ## Current scope
 
+Versioned requests must be within the advertised API range (`1.24`–`1.43`).
+Out-of-range or malformed numeric versions are rejected before any operation.
+Unversioned `/_ping` and `/version` remain available for client negotiation.
+This range describes accepted request versions, not complete implementation of
+every feature in those Docker API versions.
+
+`kill` simulates SIGKILL only (the default, `9`, `KILL`, or `SIGKILL`). Other
+signals return an explicit unsupported error rather than silently killing the
+container. Killing a non-running container returns a conflict without changing
+its exit code.
+
+
 `docker-zero` is not a general-purpose container runtime and does not aim to implement every Docker feature.
 
 Not implemented as real kernel/runtime features:
 
 - namespaces and cgroups;
-- image filesystem execution;
-- process execution inside containers;
+- image filesystem execution or archive copy/stat operations (`GET`, `PUT`, and `HEAD /containers/{id}/archive` return HTTP 501 with the unsupported marker);
+- process execution inside containers (`exec` returns HTTP 501 with the unsupported marker, never a fabricated exit code);
 - a real Docker embedded DNS server at `127.0.0.11`;
 - Redis persistence or Redis wire-level replication;
 - Docker event streaming (`GET /events`);
 - Docker disk-usage accounting (`GET /system/df`);
 - arbitrary Engine endpoints not required by a tested client or compatibility case.
+
+Container creation preserves the supplied configuration, including healthcheck definitions,
+user, working directory, entrypoint, and restart policy. Retaining a field does **not**
+mean docker-zero executes or enforces it: creation `Warnings` and inspect's
+`DockerZero.MetadataOnlyFields` identify metadata-only fields. Health is driven by
+the cookbook, not by executing the requested healthcheck command; `Test: ["NONE"]`
+omits `State.Health`. The default restart policy is `no`.
 
 When a Docker API operation is unsupported, the mock reports it explicitly with `X-Docker-Zero-Unsupported: true` and records the request in the ledger.
 

@@ -38,17 +38,6 @@ type Volume struct {
 	Scope      string            `json:"Scope"`
 }
 
-type ExecInstance struct {
-	mu sync.Mutex
-
-	ID          string
-	ContainerID string
-	Command     []string
-	Running     bool
-	ExitCode    int
-	Output      string
-}
-
 type Engine struct {
 	mu sync.RWMutex
 
@@ -63,7 +52,6 @@ type Engine struct {
 	names        map[string]string
 	networks     map[string]*Network
 	volumes      map[string]*Volume
-	execs        map[string]*ExecInstance
 	runtimes     map[string]*ContainerRuntime
 	endpointMode string
 
@@ -83,7 +71,6 @@ func newEngine(cookbooks map[string]*Cookbook, seed int, overrides map[string]in
 		names:          make(map[string]string),
 		networks:       make(map[string]*Network),
 		volumes:        make(map[string]*Volume),
-		execs:          make(map[string]*ExecInstance),
 		runtimes:       make(map[string]*ContainerRuntime),
 		endpointMode:   "auto",
 		internalErrors: make(chan error, 4),
@@ -112,24 +99,6 @@ func (e *Engine) seedFor(kind, name string) int {
 		return value
 	}
 	return e.seed
-}
-
-func (e *Engine) cookbookFor(name, image string) (*Cookbook, error) {
-	nameLower := strings.ToLower(name)
-	imageLower := strings.ToLower(image)
-	for _, kind := range sortedCookbookKinds(e.cookbooks) {
-		cb := e.cookbooks[kind]
-		if strings.Contains(nameLower, strings.ToLower(cb.Kind)) {
-			return cb, nil
-		}
-		for _, candidate := range cb.ImageNames {
-			candidate = strings.ToLower(candidate)
-			if imageLower == candidate || strings.HasPrefix(imageLower, candidate+":") || strings.Contains(imageLower, candidate) {
-				return cb, nil
-			}
-		}
-	}
-	return nil, fmt.Errorf("no cookbook matches name=%q image=%q", name, image)
 }
 
 func (e *Engine) createContainer(name, image string, labels map[string]string, env, command []string) (*Container, error) {
@@ -271,6 +240,10 @@ func (e *Engine) removeContainer(ref string, force bool) error {
 	}
 	e.mu.Unlock()
 	before := container.stateSnapshot()
+	if before.Running {
+		container.stop(137)
+	}
+	container.markRemoved()
 	e.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.remove", Before: &before})
 	return nil
 }

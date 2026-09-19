@@ -130,26 +130,6 @@ func (e *Engine) createVolume(name, driver string, labels, options map[string]st
 	return v
 }
 
-func (e *Engine) createExec(c *Container, command []string) *ExecInstance {
-	id := hashID(fmt.Sprintf("exec:%s:%d", c.ID, e.counter.Add(1)))
-	exec := &ExecInstance{ID: id, ContainerID: c.ID, Command: command, ExitCode: 0, Output: "docker-zero exec: " + strings.Join(command, " ") + "\n"}
-	e.mu.Lock()
-	e.execs[id] = exec
-	e.mu.Unlock()
-	e.ledger.Log(LedgerEntry{Container: c.Name, Kind: c.Kind, Scenario: c.Seed, Channel: "docker", Event: "exec.create", Request: map[string]any{"cmd": command}, Response: map[string]any{"id": id}})
-	return exec
-}
-
-func (e *Engine) findExec(id string) (*ExecInstance, error) {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	exec, ok := e.execs[id]
-	if !ok {
-		return nil, fmt.Errorf("no such exec instance: %s", id)
-	}
-	return exec, nil
-}
-
 func (e *Engine) stateDocument() map[string]any {
 	e.mu.RLock()
 	networkCount := len(e.networks)

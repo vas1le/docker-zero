@@ -43,6 +43,16 @@ func (r *dockerResponseRecorder) Write(payload []byte) (int, error) {
 	return n, err
 }
 
+// Flush preserves streaming behavior through the ledger recorder.
+func (r *dockerResponseRecorder) Flush() {
+	if r.status == 0 {
+		r.WriteHeader(http.StatusOK)
+	}
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 func (api *DockerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	recorder := &dockerResponseRecorder{ResponseWriter: w}
@@ -74,6 +84,11 @@ func (api *DockerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Docker-Experimental", "false")
 	w.Header().Set("Ostype", "linux")
 	w.Header().Set("X-Docker-Zero-Version", version)
+
+	if err := validateAPIVersionPath(r.URL.Path); err != nil {
+		writeDockerError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	if path == "/_ping" {
 		api.handlePing(w, r)

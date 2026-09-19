@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -27,6 +28,17 @@ type HealthLog struct {
 
 type Container struct {
 	mu sync.Mutex
+
+	waiters             map[*containerWaiter]struct{}
+	removed             bool
+	requestedConfig     map[string]json.RawMessage
+	requestedHostConfig map[string]json.RawMessage
+	metadataOnlyFields  []string
+	healthDisabled      bool
+	RestartPolicy       RestartPolicy
+
+	manuallyStopped   bool
+	automaticRestarts int
 
 	ID       string
 	Name     string
@@ -118,6 +130,7 @@ func newContainer(id, name, image string, cb *Cookbook, seed int) *Container {
 		Status:             "created",
 		Health:             HealthState{Status: ""},
 		NetworkMode:        "default",
+		RestartPolicy:      RestartPolicy{Name: "no"},
 		PortBindings:       make(map[string][]PortBinding),
 		Redis:              RedisReplicationState{Role: "master", MasterLinkStatus: "up"},
 		Counters:           make(map[string]int),
@@ -277,6 +290,12 @@ func (c *Container) advance(event string) eventAdvance {
 		if transition.WhenHealth != "" && transition.WhenHealth != c.Health.Status {
 			continue
 		}
+		if transitionRestartsStopped(c.Status, transition.Set) {
+			if !c.automaticRestartAllowedLocked() {
+				continue
+			}
+			c.automaticRestarts++
+		}
 		c.applyPatchLocked(transition.Set)
 		if transition.Once {
 			c.AppliedTransitions[index] = true
@@ -313,6 +332,7 @@ func (c *Container) applyPatch(patch StatePatch) (ContainerStateSnapshot, Contai
 
 func (c *Container) applyPatchLocked(patch StatePatch) {
 	oldStatus := c.Status
+	oldRunning := c.Running
 	oldHealth := c.Health.Status
 
 	if patch.Status != nil {
@@ -376,6 +396,12 @@ func (c *Container) applyPatchLocked(patch StatePatch) {
 		panic(fmt.Sprintf("internal invalid container status %q", c.Status))
 	}
 
+	// A running process entering a terminal or restarting state has exited.
+	// Starting an already stopped container must not fabricate a new exit.
+	if oldRunning && c.Status != oldStatus && (c.Status == "exited" || c.Status == "dead" || c.Status == "restarting") {
+		c.notifyWaitersLocked(false)
+	}
+
 	now := time.Now().UTC()
 	if c.Status == "running" && oldStatus != "running" {
 		c.Started = now
@@ -420,6 +446,8 @@ func (c *Container) start() (ContainerStateSnapshot, ContainerStateSnapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	before := c.stateSnapshotLocked()
+	c.manuallyStopped = false
+	c.automaticRestarts = 0
 	patch := c.startPatchLocked()
 	c.applyPatchLocked(patch)
 	c.StartCount++
@@ -467,12 +495,29 @@ func (c *Container) startPatchLocked() StatePatch {
 }
 
 func (c *Container) stop(exitCode int) (ContainerStateSnapshot, ContainerStateSnapshot) {
-	return c.applyPatch(StatePatch{
-		Status:     stringPtr("exited"),
-		Running:    boolPtr(false),
-		Restarting: boolPtr(false),
-		ExitCode:   intPtr(exitCode),
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	c.manuallyStopped = true
+	c.applyPatchLocked(StatePatch{
+		Status: stringPtr("exited"), Running: boolPtr(false),
+		Restarting: boolPtr(false), ExitCode: intPtr(exitCode),
 	})
+	return before, c.stateSnapshotLocked()
+}
+
+// kill atomically validates and transitions state so concurrent kills cannot
+// both report success. Only SIGKILL is modeled by the Docker API.
+func (c *Container) kill() (ContainerStateSnapshot, ContainerStateSnapshot, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	if !c.Running || c.Dead || c.removed {
+		return before, before, fmt.Errorf("container is not running")
+	}
+	c.manuallyStopped = true
+	c.applyPatchLocked(StatePatch{Status: stringPtr("exited"), ExitCode: intPtr(137)})
+	return before, c.stateSnapshotLocked(), nil
 }
 
 func (c *Container) pause() (ContainerStateSnapshot, ContainerStateSnapshot, error) {
@@ -506,14 +551,39 @@ func (c *Container) unpause() (ContainerStateSnapshot, ContainerStateSnapshot, e
 }
 
 func (c *Container) restart() (ContainerStateSnapshot, ContainerStateSnapshot) {
-	return c.applyPatch(StatePatch{
-		Status:            stringPtr("restarting"),
-		Running:           boolPtr(true),
-		Restarting:        boolPtr(true),
-		Health:            stringPtr("starting"),
-		ExitCode:          intPtr(0),
-		RestartCountDelta: 1,
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	before := c.stateSnapshotLocked()
+	c.manuallyStopped = false
+	c.automaticRestarts = 0
+	c.applyPatchLocked(StatePatch{
+		Status: stringPtr("restarting"), Running: boolPtr(true), Restarting: boolPtr(true),
+		Health: stringPtr("starting"), ExitCode: intPtr(0), RestartCountDelta: 1,
 	})
+	return before, c.stateSnapshotLocked()
+}
+
+// Observations step a permitted daemon-policy fixture; they are not a
+// substitute for a controller's explicit restart when the policy is "no".
+func transitionRestartsStopped(status string, patch StatePatch) bool {
+	if status != "exited" && status != "created" && status != "dead" {
+		return false
+	}
+	return patch.Status != nil && (*patch.Status == "running" || *patch.Status == "restarting" || *patch.Status == "paused")
+}
+
+func (c *Container) automaticRestartAllowedLocked() bool {
+	if c.manuallyStopped || c.removed || c.Status != "exited" || c.StartCount == 0 {
+		return false
+	}
+	switch c.RestartPolicy.Name {
+	case "always", "unless-stopped":
+		return true
+	case "on-failure":
+		return c.ExitCode != 0 && (c.RestartPolicy.MaximumRetryCount == 0 || c.automaticRestarts < c.RestartPolicy.MaximumRetryCount)
+	default:
+		return false
+	}
 }
 
 func (c *Container) eventCount(event string) int {

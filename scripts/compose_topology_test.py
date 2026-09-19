@@ -229,6 +229,29 @@ class Suite:
         assert status == 200, (status, data)
         return list(json.loads(data)["answers"])
 
+    def test_quick_start(self) -> None:
+        project = "quickstart"
+        path = Path(__file__).resolve().parents[1] / "compose.yaml"
+        previous_env = self.env.copy()
+        http_port, redis_port = free_port(), free_port()
+        while redis_port == http_port:
+            redis_port = free_port()
+        self.env["DOCKER_ZERO_HTTP_PORT"] = str(http_port)
+        self.env["DOCKER_ZERO_REDIS_PORT"] = str(redis_port)
+        try:
+            self.run_compose(project, path, "config", "--quiet")
+            self.run_compose(project, path, "up", "-d")
+            self.run_compose(project, path, "ps")
+            assert len(project_containers(self.socket, project)) == 2
+            assert http_get(http_port)[0] == 200
+            assert redis_command(redis_port, "PING") == b"+PONG\r\n"
+            self.run_compose(project, path, "down")
+            assert not project_containers(self.socket, project)
+            print("PASS repository quick start: Compose config/up/ps, HTTP, Redis, down")
+        finally:
+            self.down(project, path)
+            self.env = previous_env
+
     def test_scale_distinct_ips_and_dns(self) -> None:
         project = "toposcale"
         path = self.write_compose(project, """services:\n  nginx:\n    image: nginx:alpine\n""")
@@ -525,6 +548,7 @@ def main() -> None:
 
     suite = Suite(engine, compose)
     try:
+        suite.test_quick_start()
         suite.test_scale_distinct_ips_and_dns()
         suite.test_ephemeral_ports_route_per_replica()
         suite.test_fixed_port_conflicts()

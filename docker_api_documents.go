@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -102,7 +103,7 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 		"OOMKilled": c.OOMKilled, "Dead": c.Dead, "Pid": c.Pid, "ExitCode": c.ExitCode, "Error": c.Error,
 		"StartedAt": formatDockerTime(c.Started), "FinishedAt": formatDockerTime(c.Finished),
 	}
-	if c.Health.Status != "" {
+	if c.Health.Status != "" && !c.healthDisabled {
 		state["Health"] = map[string]any{"Status": c.Health.Status, "FailingStreak": c.Health.FailingStreak, "Log": c.Health.Log}
 	}
 	id, created, imageID, name, restartCount, networkMode := c.ID, c.Created, c.ImageID, c.Name, c.RestartCount, c.NetworkMode
@@ -110,11 +111,21 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 	labels := cloneStringMap(c.Labels)
 	primaryIP := c.PrimaryIP
 	containerPort := c.Spec.ContainerPort
+	requestedConfig := cloneRawJSONMap(c.requestedConfig)
+	requestedHostConfig := cloneRawJSONMap(c.requestedHostConfig)
+	metadataOnlyFields := append([]string{}, c.metadataOnlyFields...)
+	restartPolicy := c.RestartPolicy
+	healthDisabled := c.healthDisabled
 	c.mu.Unlock()
 
+	var entrypoint []string
+	if raw := requestedConfig["Entrypoint"]; raw != nil {
+		_ = json.Unmarshal(raw, &entrypoint)
+	}
+	processCommand := append(entrypoint, command...)
 	hostPortBindings, networkPorts, exposed := dockerPortBindingDocuments(c)
-	return map[string]any{
-		"Id": id, "Created": formatDockerTime(created), "Path": firstOrEmpty(command), "Args": restOrEmpty(command), "State": state,
+	doc := map[string]any{
+		"Id": id, "Created": formatDockerTime(created), "Path": firstOrEmpty(processCommand), "Args": restOrEmpty(processCommand), "State": state,
 		"Image": imageID, "ResolvConfPath": "/var/lib/docker-zero/containers/" + id + "/resolv.conf",
 		"HostnamePath": "/var/lib/docker-zero/containers/" + id + "/hostname", "HostsPath": "/var/lib/docker-zero/containers/" + id + "/hosts",
 		"LogPath": "/var/lib/docker-zero/containers/" + id + "/" + id + "-json.log", "Name": "/" + name,
@@ -122,7 +133,7 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 		"HostConfig": map[string]any{
 			"Binds": nil, "ContainerIDFile": "", "LogConfig": map[string]any{"Type": "json-file", "Config": map[string]string{}},
 			"NetworkMode": networkMode, "PortBindings": hostPortBindings,
-			"RestartPolicy": map[string]any{"Name": "unless-stopped", "MaximumRetryCount": 0}, "AutoRemove": false,
+			"RestartPolicy": restartPolicy, "AutoRemove": false,
 			"VolumeDriver": "", "VolumesFrom": nil, "ConsoleSize": []int{0, 0}, "CapAdd": nil, "CapDrop": nil,
 			"CgroupnsMode": "private", "Dns": []string{"127.0.0.11"}, "DnsOptions": nil, "DnsSearch": nil, "ExtraHosts": nil, "GroupAdd": nil,
 			"IpcMode": "private", "Cgroup": "", "Links": nil, "OomScoreAdj": 0, "PidMode": "", "Privileged": false,
@@ -141,8 +152,37 @@ func containerInspectDocument(c *Container, networks map[string]any) map[string]
 			"EndpointID": hashID("endpoint:" + id), "Gateway": "127.0.0.1", "GlobalIPv6Address": "", "GlobalIPv6PrefixLen": 0,
 			"IPAddress": primaryIP, "IPPrefixLen": 24, "IPv6Gateway": "", "MacAddress": macForContainer(id), "Networks": networks,
 		},
-		"DockerZero": map[string]any{"ContainerPort": containerPort},
+		"DockerZero": map[string]any{"ContainerPort": containerPort, "MetadataOnlyFields": metadataOnlyFields, "HealthSource": "cookbook (healthcheck commands are not executed)"},
 	}
+	config := doc["Config"].(map[string]any)
+	for field, value := range requestedConfig {
+		if field != "ExposedPorts" {
+			config[field] = value
+		}
+	}
+	// Merge requested exposure with the cookbook and published-port metadata.
+	var requestedPorts map[string]any
+	if raw := requestedConfig["ExposedPorts"]; raw != nil {
+		_ = json.Unmarshal(raw, &requestedPorts)
+	}
+	for port := range requestedPorts {
+		exposed[port] = map[string]any{}
+		if _, exists := networkPorts[port]; !exists {
+			networkPorts[port] = nil
+		}
+	}
+	hostConfig := doc["HostConfig"].(map[string]any)
+	for field, value := range requestedHostConfig {
+		switch field {
+		case "NetworkMode", "PortBindings", "RestartPolicy":
+			continue
+		}
+		hostConfig[field] = value
+	}
+	if healthDisabled {
+		doc["DockerZero"].(map[string]any)["HealthSource"] = "disabled"
+	}
+	return doc
 }
 
 func networkEndpointFor(c *Container, network *Network, endpoint map[string]any) map[string]any {
@@ -191,7 +231,7 @@ func humanContainerStatus(c *Container) string {
 		if c.Started.IsZero() {
 			age = 0
 		}
-		if c.Health.Status != "" {
+		if c.Health.Status != "" && !c.healthDisabled {
 			return fmt.Sprintf("Up %s (%s)", age, c.Health.Status)
 		}
 		return fmt.Sprintf("Up %s", age)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -99,18 +98,21 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		api.engine.logContainerEvent(container, "container.restart", advance, nil, nil)
 		w.WriteHeader(http.StatusNoContent)
 	case action == "kill" && r.Method == http.MethodPost:
-		before := container.stateSnapshot()
+		signal := r.URL.Query().Get("signal")
+		if signal != "" && signal != "9" && signal != "KILL" && signal != "SIGKILL" {
+			writeUnsupportedDockerError(w, http.StatusNotImplemented, "only SIGKILL (the default kill signal) is simulated")
+			return
+		}
+		before, after, killErr := container.kill()
+		if killErr != nil {
+			writeDockerError(w, http.StatusConflict, killErr.Error())
+			return
+		}
 		_ = api.engine.stopContainerRuntime(container)
-		container.stop(137)
-		advance := container.advance("docker.kill")
-		advance.Before = before
-		api.engine.logContainerEvent(container, "container.kill", advance, nil, nil)
+		api.engine.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "container.kill", Before: &before, After: &after})
 		w.WriteHeader(http.StatusNoContent)
 	case action == "wait" && r.Method == http.MethodPost:
-		advance := container.advance("docker.wait")
-		state := container.stateSnapshot()
-		api.engine.logContainerEvent(container, "container.wait", advance, nil, map[string]any{"StatusCode": state.ExitCode})
-		writeJSON(w, http.StatusOK, map[string]any{"StatusCode": state.ExitCode, "Error": nil})
+		api.handleContainerWait(w, r, container)
 	case action == "logs" && r.Method == http.MethodGet:
 		advance := container.advance("docker.logs")
 		logs := container.allLogs()
@@ -124,10 +126,14 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusOK, map[string]any{"Titles": []string{"UID", "PID", "PPID", "C", "STIME", "TTY", "TIME", "CMD"}, "Processes": [][]string{}})
 	case action == "exec" && r.Method == http.MethodPost:
 		container.mu.Lock()
-		paused := container.Paused
+		state := container.stateSnapshotLocked()
 		container.mu.Unlock()
-		if paused {
+		if state.Paused {
 			writeDockerError(w, http.StatusConflict, "container is paused, unpause the container before exec")
+			return
+		}
+		if !state.Running || state.Restarting || state.Dead {
+			writeDockerError(w, http.StatusConflict, "container is not running")
 			return
 		}
 		var request struct {
@@ -137,13 +143,13 @@ func (api *DockerAPI) handleContainerAction(w http.ResponseWriter, r *http.Reque
 			writeDockerError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		exec := api.engine.createExec(container, request.Cmd)
-		writeJSON(w, http.StatusCreated, map[string]any{"Id": exec.ID})
-	case action == "archive" && (r.Method == http.MethodPut || r.Method == http.MethodHead):
-		advance := container.advance("docker.archive")
-		_, _ = io.Copy(io.Discard, r.Body)
-		api.engine.logContainerEvent(container, "container.archive", advance, map[string]any{"path": r.URL.Query().Get("path")}, nil)
-		w.WriteHeader(http.StatusOK)
+		if len(request.Cmd) == 0 || request.Cmd[0] == "" {
+			writeDockerError(w, http.StatusBadRequest, "no command specified")
+			return
+		}
+		writeUnsupportedDockerError(w, http.StatusNotImplemented, "exec is not simulated: no container processes are executed")
+	case action == "archive" && (r.Method == http.MethodPut || r.Method == http.MethodHead || r.Method == http.MethodGet):
+		writeUnsupportedDockerError(w, http.StatusNotImplemented, "archive operations are not simulated: no container filesystem exists")
 	case action == "json" && r.Method == http.MethodDelete:
 		fallthrough
 	case len(parts) == 1 && r.Method == http.MethodDelete:

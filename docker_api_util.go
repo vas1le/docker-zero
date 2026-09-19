@@ -23,14 +23,57 @@ func writeDockerStreamFrame(w io.Writer, stream byte, payload []byte) {
 	_, _ = w.Write(payload)
 }
 
+// Docker API versions are integer pairs, not decimal numbers: 1.100 > 1.43.
+func parseAPIVersion(value string) (major, minor int, err error) {
+	parts := strings.Split(value, ".")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid API version %q", value)
+	}
+	for _, part := range parts {
+		if part == "" || strings.IndexFunc(part, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+			return 0, 0, fmt.Errorf("invalid API version %q", value)
+		}
+	}
+	major, err = strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid API version %q", value)
+	}
+	minor, err = strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid API version %q", value)
+	}
+	return major, minor, nil
+}
+
 func stripAPIVersion(path string) string {
-	parts := strings.Split(path, "/")
-	if len(parts) > 2 && len(parts[1]) >= 3 && parts[1][0] == 'v' && strings.Contains(parts[1], ".") {
-		if _, err := strconv.ParseFloat(parts[1][1:], 64); err == nil {
-			return "/" + strings.Join(parts[2:], "/")
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) == 3 && strings.HasPrefix(parts[1], "v") {
+		if _, _, err := parseAPIVersion(strings.TrimPrefix(parts[1], "v")); err == nil {
+			return "/" + parts[2]
 		}
 	}
 	return path
+}
+
+func validateAPIVersionPath(path string) error {
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) < 3 || len(parts[1]) < 2 || parts[1][0] != 'v' || parts[1][1] < '0' || parts[1][1] > '9' {
+		return nil // Unversioned endpoint; do not confuse /volumes with a version.
+	}
+	value := parts[1][1:]
+	major, minor, err := parseAPIVersion(value)
+	if err != nil {
+		return err
+	}
+	minMajor, minMinor, _ := parseAPIVersion(minAPIVersion)
+	maxMajor, maxMinor, _ := parseAPIVersion(apiVersion)
+	if major < minMajor || (major == minMajor && minor < minMinor) {
+		return fmt.Errorf("client version %s is too old. Minimum supported API version is %s", value, minAPIVersion)
+	}
+	if major > maxMajor || (major == maxMajor && minor > maxMinor) {
+		return fmt.Errorf("client version %s is too new. Maximum supported API version is %s", value, apiVersion)
+	}
+	return nil
 }
 
 func decodeJSON(body io.Reader, target any) error {

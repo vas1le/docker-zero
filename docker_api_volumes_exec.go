@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 )
 
 func (api *DockerAPI) handleVolumeList(w http.ResponseWriter, r *http.Request) {
@@ -62,43 +61,5 @@ func (api *DockerAPI) handleVolumeAction(w http.ResponseWriter, r *http.Request,
 }
 
 func (api *DockerAPI) handleExecAction(w http.ResponseWriter, r *http.Request, rest string) {
-	parts := strings.Split(rest, "/")
-	id := parts[0]
-	action := "json"
-	if len(parts) > 1 {
-		action = parts[1]
-	}
-	exec, err := api.engine.findExec(id)
-	if err != nil {
-		writeDockerError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	container, _ := api.engine.findContainer(exec.ContainerID)
-	switch {
-	case action == "start" && r.Method == http.MethodPost:
-		exec.mu.Lock()
-		exec.Running = false
-		output := exec.Output
-		command := append([]string(nil), exec.Command...)
-		exitCode := exec.ExitCode
-		exec.mu.Unlock()
-		if container != nil {
-			container.appendLog(output)
-			api.engine.ledger.Log(LedgerEntry{Container: container.Name, Kind: container.Kind, Scenario: container.Seed, Channel: "docker", Event: "exec.start", Request: map[string]any{"id": id, "cmd": command}, Response: map[string]any{"exit_code": exitCode}})
-		}
-		w.Header().Set("Content-Type", "application/vnd.docker.raw-stream")
-		w.WriteHeader(http.StatusOK)
-		writeDockerStreamFrame(w, 1, []byte(output))
-	case action == "json" && r.Method == http.MethodGet:
-		exec.mu.Lock()
-		doc := map[string]any{
-			"CanRemove": false, "DetachKeys": "", "ID": exec.ID, "Running": exec.Running,
-			"ExitCode": exec.ExitCode, "ProcessConfig": map[string]any{"entrypoint": "", "arguments": append([]string(nil), exec.Command...), "privileged": false, "tty": false, "user": ""},
-			"OpenStdin": false, "OpenStderr": true, "OpenStdout": true, "ContainerID": exec.ContainerID, "Pid": 0,
-		}
-		exec.mu.Unlock()
-		writeJSON(w, http.StatusOK, doc)
-	default:
-		writeUnsupportedDockerError(w, http.StatusNotFound, fmt.Sprintf("unsupported exec operation: %s %s", r.Method, action))
-	}
+	writeUnsupportedDockerError(w, http.StatusNotImplemented, "exec is not simulated: no container processes are executed")
 }
