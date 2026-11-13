@@ -1,0 +1,24 @@
+{
+  "files": {
+    "cookbook_load.go": {
+      "name": "Load scenarios",
+      "description": "Reads the built-in and extra scenario files for each service."
+    },
+    "cookbook_responses.go": {
+      "name": "Scenario answer checks",
+      "description": "Checks the ordered answers a scenario gives for web and Redis requests."
+    },
+    "cookbook_state_validation.go": {
+      "name": "Scenario state checks",
+      "description": "Checks the health and state changes a scenario asks for make sense."
+    },
+    "cookbook_types.go": {
+      "name": "Scenario shape",
+      "description": "Defines what a scenario file holds: service defaults, answers and failures."
+    },
+    "cookbook_validate.go": {
+      "name": "Scenario validation",
+      "description": "Checks a whole scenario before it is used."
+    }
+  }
+}

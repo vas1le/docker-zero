@@ -1,0 +1,32 @@
+{
+  "files": {
+    "scripts/compose_smoke.sh": {
+      "name": "Compose quick check",
+      "description": "Runs real Docker Compose against a built stand-in for a quick check."
+    },
+    "scripts/compose_topology_test.py": {
+      "name": "Compose compatibility tests",
+      "description": "Drives the stand-in with the real Docker Compose to check networks, ports and replicas."
+    },
+    "scripts/doctor.py": {
+      "name": "Release self-test",
+      "description": "Checks a release works: the program, scenario errors, the socket, Nginx, Redis and clean shutdown."
+    },
+    "scripts/integration_test.py": {
+      "name": "Outside-in tests",
+      "description": "Checks the stand-in using only its socket and public answers."
+    },
+    "scripts/matrix_harness_test.py": {
+      "name": "Matrix runner tests",
+      "description": "Checks how the orchestrator matrix classifies results and controls runs."
+    },
+    "scripts/matrix_probe.py": {
+      "name": "Matrix test target",
+      "description": "A small program the matrix runner tests drive."
+    },
+    "scripts/orchestrator_matrix.py": {
+      "name": "Orchestrator matrix",
+      "description": "Runs an unchanged orchestrator against every scenario combination, each on a fresh stand-in."
+    }
+  }
+}

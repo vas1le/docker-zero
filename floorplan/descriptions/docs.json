@@ -1,0 +1,24 @@
+{
+  "files": {
+    "CHANGELOG.md": {
+      "name": "Change log",
+      "description": "Lists what changed in each release."
+    },
+    "CODE_OF_CONDUCT.md": {
+      "name": "Code of conduct",
+      "description": "Sets how people taking part are expected to behave."
+    },
+    "CONTRIBUTING.md": {
+      "name": "How to contribute",
+      "description": "Explains how to set up, check and propose changes."
+    },
+    "README.md": {
+      "name": "Front page",
+      "description": "Explains what the stand-in imitates, why, how to start it and what it does not do."
+    },
+    "SECURITY.md": {
+      "name": "Reporting problems privately",
+      "description": "Explains how to report a serious problem privately."
+    }
+  }
+}

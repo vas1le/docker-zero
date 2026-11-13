@@ -1,0 +1,20 @@
+{
+  "files": {
+    "redis_replication.go": {
+      "name": "Redis copies",
+      "description": "Imitates Redis copies following a main Redis, including which copy can accept writes."
+    },
+    "service_nginx.go": {
+      "name": "Pretend Nginx",
+      "description": "Makes a pretend Nginx answer web requests as the scenario says."
+    },
+    "service_redis.go": {
+      "name": "Pretend Redis",
+      "description": "Makes a pretend Redis answer Redis commands as the scenario says."
+    },
+    "service_runtime.go": {
+      "name": "Service runner",
+      "description": "Runs each pretend service for its container and applies the scenario's timing and failures."
+    }
+  }
+}

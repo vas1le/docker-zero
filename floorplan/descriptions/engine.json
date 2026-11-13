@@ -1,0 +1,44 @@
+{
+  "files": {
+    "container_config.go": {
+      "name": "Container settings",
+      "description": "Holds a container's restart rule and health check settings."
+    },
+    "container_wait.go": {
+      "name": "Wait for a container",
+      "description": "Lets a tool wait until a pretend container stops and reports how it ended."
+    },
+    "diagnostic.go": {
+      "name": "Scenario error messages",
+      "description": "Explains a mistake in a scenario file with its exact place and a short excerpt."
+    },
+    "engine_core.go": {
+      "name": "Engine records",
+      "description": "Defines the pretend containers, networks and volumes and the engine that holds them."
+    },
+    "engine_network.go": {
+      "name": "Networks and addresses",
+      "description": "Gives each pretend container its own address and service names on each network it joins."
+    },
+    "engine_resources.go": {
+      "name": "Create and remove resources",
+      "description": "Creates, finds and removes pretend networks, volumes and containers, refusing unsafe removals."
+    },
+    "ledger.go": {
+      "name": "Call ledger",
+      "description": "Writes every Docker call, service request and state change, in order, to a log file."
+    },
+    "network_types.go": {
+      "name": "Port settings",
+      "description": "Describes one published port, fixed or picked automatically."
+    },
+    "runtime_error.go": {
+      "name": "Internal fault report",
+      "description": "Tells apart a flaw in the stand-in itself from a failure a scenario asked for."
+    },
+    "state.go": {
+      "name": "Container lifecycle",
+      "description": "Moves each pretend container through starting, healthy, stopped and failed states, with its restart rules."
+    }
+  }
+}
