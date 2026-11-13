@@ -1,0 +1,8 @@
+{
+  "files": {
+    "main.go": {
+      "name": "Program start",
+      "description": "Reads the options, loads the scenarios, starts the stand-in on its socket and shuts it down cleanly."
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "floorplan/architecture@1",
+  "project": {
+    "name": "docker-zero",
+    "summary": "A stand-in for Docker used in tests: programs that drive Docker talk to it as if it were real, but no containers run. It imitates containers, networks, ports, Nginx and Redis, and can fail on purpose so failure handling can be tested quickly.",
+    "entrypoints": ["main.go"]
+  },
+  "audience": "everyone",
+  "include": ["code", "docs"],
+  "ignore": [".env*", "**/.env*", ".github/**"],
+  "nodes": [
+    {"id": "main", "label": "Program start", "kind": "service", "summary": "Reads the options, loads the scenarios and starts the stand-in Docker on its socket.", "paths": ["main.go"]},
+    {"id": "api", "label": "Docker requests", "kind": "feature", "summary": "Answers the requests Docker tools send, for containers, images, networks and volumes, the way Docker would.", "paths": ["docker_api_*.go", "docker_filters.go", "image_match.go"], "exclude": ["*_test.go"]},
+    {"id": "engine", "label": "Pretend engine", "kind": "feature", "summary": "Keeps the state of every pretend container, network, address and port, and records every call in order.", "paths": ["engine_*.go", "state.go", "container_*.go", "network_types.go", "ledger.go", "runtime_error.go", "diagnostic.go"], "exclude": ["*_test.go"]},
+    {"id": "services", "label": "Pretend Nginx and Redis", "kind": "feature", "summary": "Makes pretend web servers and Redis databases answer like the real ones, including copies that follow a main one.", "paths": ["service_*.go", "redis_replication.go"], "exclude": ["*_test.go"]},
+    {"id": "cookbooks", "label": "Scenarios", "kind": "data", "summary": "Describes how each pretend service behaves and fails, checked carefully when loaded.", "paths": ["cookbook_*.go"], "exclude": ["*_test.go"]},
+    {"id": "tests", "label": "Automatic checks", "kind": "test", "summary": "Checks the stand-in behaves like Docker, refuses what it does not support and never fakes success.", "paths": ["*_test.go"]},
+    {"id": "scripts", "label": "Real-tool checks", "kind": "script", "summary": "Drives the stand-in with the real Docker Compose and real orchestrators, plus a self-test of a release.", "paths": ["scripts"]},
+    {"id": "docs", "label": "Documentation", "kind": "feature", "summary": "What it is, how to use and contribute to it, and what changed in each release.", "paths": ["*.md"]},
+    {"id": "client", "label": "Docker tools under test", "kind": "external", "summary": "Docker's own command line, Docker Compose or any program that drives Docker."}
+  ],
+  "edges": [
+    {"from": "client", "to": "api", "kind": "http", "label": "Docker requests", "description": "Clients reach docker_api_server.go over the Unix socket set by DOCKER_HOST (README)."}
+  ],
+  "flows": [
+    {"id": "compose-up", "title": "A test starts services with Docker Compose", "steps": [
+      {"node": "client", "note": "The test runs Docker Compose pointed at the stand-in."},
+      {"node": "api", "note": "The stand-in answers the create and start requests exactly as Docker would."},
+      {"node": "engine", "note": "It gives each pretend container an address and ports and records every step."},
+      {"node": "cookbooks", "note": "The chosen scenario decides whether each service comes up healthy or fails."},
+      {"node": "services", "note": "Pretend Nginx and Redis answer the test's own requests."}
+    ]}
+  ],
+  "tour": [
+    {"node": "docs", "title": "What it is", "note": "A fake Docker for testing software that controls Docker."},
+    {"node": "engine", "title": "The pretend engine", "note": "Everything is a predictable record; nothing really runs."},
+    {"node": "cookbooks", "title": "Failing on purpose", "note": "Scenarios make services fail in planned ways."}
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "files": {
+    "api_runtime_test.go": {
+      "name": "Api runtime tests",
+      "description": "Checks unsupported requests and runtime behaviour."
+    },
+    "api_version_contract_test.go": {
+      "name": "Api version tests",
+      "description": "Checks Docker version limits."
+    },
+    "archive_contract_test.go": {
+      "name": "Archive tests",
+      "description": "Checks file copy being refused and logged."
+    },
+    "collision_test.go": {
+      "name": "Collision tests",
+      "description": "Checks port and network clashes."
+    },
+    "compose_compat_test.go": {
+      "name": "Compose compat tests",
+      "description": "Checks Docker Compose project filters and networks."
+    },
+    "config_contract_test.go": {
+      "name": "Config tests",
+      "description": "Checks container settings being kept as given."
+    },
+    "cookbook_match_contract_test.go": {
+      "name": "Cookbook match tests",
+      "description": "Checks scenario choice by image."
+    },
+    "diagnostics_test.go": {
+      "name": "Diagnostics tests",
+      "description": "Checks scenario error messages."
+    },
+    "docker_zero_test.go": {
+      "name": "Docker zero tests",
+      "description": "Checks core answers and scenario choice."
+    },
+    "exec_contract_test.go": {
+      "name": "Exec tests",
+      "description": "Checks commands never faking success."
+    },
+    "fuzz_test.go": {
+      "name": "Fuzz tests",
+      "description": "Checks odd inputs to version and Redis parsing."
+    },
+    "kill_contract_test.go": {
+      "name": "Kill tests",
+      "description": "Checks kill requests."
+    },
+    "restart_policy_contract_test.go": {
+      "name": "Restart policy tests",
+      "description": "Checks restart rules."
+    },
+    "review_regression_test.go": {
+      "name": "Review regression tests",
+      "description": "Checks earlier review findings."
+    },
+    "test_cleanup_test.go": {
+      "name": "Test clean-up helpers",
+      "description": "Closes test resources and logs safely at the end of each check."
+    },
+    "topology_test.go": {
+      "name": "Topology tests",
+      "description": "Checks networks, addresses and replicas."
+    },
+    "wait_contract_test.go": {
+      "name": "Wait tests",
+      "description": "Checks waiting for a container."
+    }
+  }
+}

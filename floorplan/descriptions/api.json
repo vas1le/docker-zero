@@ -1,0 +1,40 @@
+{
+  "files": {
+    "docker_api_container_action.go": {
+      "name": "Container actions",
+      "description": "Handles start, stop, pause, restart, kill, wait and remove for a pretend container."
+    },
+    "docker_api_container_create.go": {
+      "name": "Create a container",
+      "description": "Creates a pretend container from a Docker request, including its published ports."
+    },
+    "docker_api_documents.go": {
+      "name": "Docker-style answers",
+      "description": "Shapes container and network details exactly as Docker would show them."
+    },
+    "docker_api_images_networks.go": {
+      "name": "Images and networks",
+      "description": "Handles listing and pulling pretend images and creating, joining and removing networks."
+    },
+    "docker_api_server.go": {
+      "name": "Docker request handler",
+      "description": "Receives every Docker request on the socket, checks its version and sends it to the right handler."
+    },
+    "docker_api_util.go": {
+      "name": "Request helpers",
+      "description": "Shared helpers for answers, streamed output and Docker version numbers."
+    },
+    "docker_api_volumes_exec.go": {
+      "name": "Volumes and commands",
+      "description": "Handles pretend volumes and commands run inside a container, without faking a success."
+    },
+    "docker_filters.go": {
+      "name": "Docker list filters",
+      "description": "Reads the filters Docker tools send when listing things, in each format clients use."
+    },
+    "image_match.go": {
+      "name": "Image name matching",
+      "description": "Matches images by their full name and tag, never by part of a name."
+    }
+  }
+}
