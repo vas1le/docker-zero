@@ -1,0 +1,84 @@
+name: CI (lean)
+
+# Manual trigger only: merging this file spends zero Actions minutes.
+# To enable automatic runs, uncomment the block below (and keep workflow_dispatch).
+#
+# on:
+#   pull_request:
+#     paths:
+#       - '**.go'
+#       - 'go.mod'
+#       - 'go.sum'
+#       - 'scripts/**'
+#       - 'Makefile'
+#       - '.golangci.yml'
+#       - '.github/workflows/ci.yml'
+#   push:
+#     branches: [main]
+#     paths:
+#       - '**.go'
+#       - 'go.mod'
+#       - 'go.sum'
+#       - 'scripts/**'
+#       - 'Makefile'
+#       - '.golangci.yml'
+#       - '.github/workflows/ci.yml'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-unit:
+    name: Format, vet, lint and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Format check
+        run: make fmt-check
+
+      - name: Vet
+        run: make vet
+
+      - name: Python syntax (scripts)
+        run: make pycheck
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.12.2
+          args: --timeout=5m
+
+      - name: Enable unprivileged low ports for strict virtual-endpoint tests
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+
+      - name: Unit tests
+        run: make test
+
+  build:
+    name: Build linux amd64
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: make build
